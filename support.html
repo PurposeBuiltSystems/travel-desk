@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Support — Travel Desk</title>
+  <style>
+    body { font-family: -apple-system, Segoe UI, sans-serif; margin: 3rem auto; max-width: 44rem; padding: 0 1rem; color: #242424; line-height: 1.55; }
+    h1 { color: #0f6cbd; }
+    h2 { margin-top: 2rem; }
+    code { background: #f3f2f1; padding: 0.1rem 0.3rem; border-radius: 3px; }
+    .muted { color: #616161; }
+  </style>
+</head>
+<body>
+  <h1>Support</h1>
+  <p class="muted">Add-in: <strong>Travel Desk</strong></p>
+
+  <h2>What it does</h2>
+  <p>Fill one travel request and get both artifacts: the Travel Authorization email
+     draft to your coordinator, and the matching row in your Division's shared
+     travel planner workbook.</p>
+
+  <h2>One-time setup</h2>
+  <ol>
+    <li>In SharePoint/OneDrive, open the planner workbook folder, choose
+        <strong>Copy link</strong> for the workbook file.</li>
+    <li>Open any message in Outlook → click <strong>Travel Desk</strong> on the ribbon.</li>
+    <li>Expand <strong>Setup</strong>, paste the link, click <strong>Connect workbook</strong>
+        (first run: sign in and consent — one time only).</li>
+    <li>Pick the planner table and confirm the coordinator email.</li>
+  </ol>
+  <p><strong>The planner must be an Excel Table.</strong> If Connect says no table was
+     found: open the workbook in Excel, select the header row plus data,
+     <em>Insert &gt; Table</em> ("My table has headers" checked), save, reconnect.</p>
+
+  <h2>Each trip</h2>
+  <ol>
+    <li>Fill the traveler, event, costs, and any third-party reimbursement sections —
+        the estimated total updates as you type.</li>
+    <li>Click <strong>Create travel request</strong>. The email draft lands in your
+        Drafts folder for review; the planner row is appended immediately.</li>
+  </ol>
+
+  <h2>Troubleshooting</h2>
+  <ul>
+    <li><strong>"Couldn't open the workbook"</strong> — make sure the link is to the
+        file itself (not the folder) and that your account can edit it.</li>
+    <li><strong>Wrong columns filled</strong> — the add-in maps by column header
+        names (Event, City, Start date, Attendee, Cost, TEWD, …). Header renames are
+        picked up automatically on the next request.</li>
+    <li><strong>Draft didn't send</strong> — by design. Travel Desk never sends;
+        review the draft in your Drafts folder and send it yourself.</li>
+  </ul>
+
+  <h2>Privacy</h2>
+  <p>No data collection — everything runs in your own Microsoft 365 session. See the
+     <a href="privacy-policy.html">Privacy Policy</a>.</p>
+
+  <h2>Contact</h2>
+  <p><a href="mailto:Matthew@purposebuilt.systems">Matthew@purposebuilt.systems</a></p>
+</body>
+</html>

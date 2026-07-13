@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Travel Desk</title>
+
+  <!-- Office.js -->
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <!-- MSAL Browser (provides createNestablePublicClientApplication for NAA) -->
+  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.1/lib/msal-browser.min.js"></script>
+
+  <link rel="stylesheet" href="taskpane.css" />
+</head>
+<body>
+  <header class="app-head">
+    <h1>Travel Desk</h1>
+    <p class="sub">One entry &rarr; the Travel Authorization email and the Division planner row.</p>
+  </header>
+
+  <details id="setup" class="options">
+    <summary>Setup (once)</summary>
+    <label>Planner workbook link (SharePoint/OneDrive "Copy link")
+      <input id="wbUrl" type="text" placeholder="https://iowadot.sharepoint.com/..." />
+    </label>
+    <button id="connect">Connect workbook</button>
+    <label>Planner table
+      <select id="tableName"></select>
+    </label>
+    <label>Coordinator email
+      <input id="coordEmail" type="text" value="Keri.Greenfield@iowadot.us" />
+    </label>
+  </details>
+
+  <section class="form">
+    <h2>Traveler</h2>
+    <label>Name <input id="name" type="text" placeholder="Matt Miller" /></label>
+    <label>Cost center <input id="costCenter" type="text" /></label>
+    <div class="row2">
+      <label>Division <input id="division" type="text" /></label>
+      <label>Bureau <input id="bureau" type="text" /></label>
+    </div>
+    <label>Other staff attending <input id="otherStaff" type="text" /></label>
+
+    <h2>Event</h2>
+    <label>Conference / event name <input id="event" type="text" /></label>
+    <label>Location (City, State) <input id="location" type="text" /></label>
+    <div class="row2">
+      <label>Event start <input id="eventStart" type="date" /></label>
+      <label>Role <input id="attendeeRole" type="text" placeholder="attendee, speaker…" /></label>
+    </div>
+    <label>Conference dates &amp; times <input id="confDates" type="text" placeholder="Jan 10–14, 8am–5pm" /></label>
+    <div class="row2">
+      <label>Departure <input id="departDate" type="date" /></label>
+      <label>Return <input id="returnDate" type="date" /></label>
+    </div>
+    <label>Reason for travel <textarea id="reason" rows="2"></textarea></label>
+    <label>Meeting / event link <input id="meetingLink" type="text" /></label>
+
+    <h2>Travel &amp; costs</h2>
+    <div class="modes">
+      <label><input id="modePersonal" type="checkbox" /> Personal vehicle</label>
+      <label><input id="modeState" type="checkbox" /> State vehicle</label>
+      <label><input id="modeAir" type="checkbox" /> Commercial air</label>
+    </div>
+    <div class="row2">
+      <label>Travel mode cost $ <input id="cTravelMode" type="number" min="0" step="0.01" /></label>
+      <label>Luggage $ <input id="cLuggage" type="number" min="0" step="0.01" /></label>
+    </div>
+    <div class="row2">
+      <label>Parking $ <input id="cParking" type="number" min="0" step="0.01" /></label>
+      <label>Taxi / rideshare $ <input id="cTaxi" type="number" min="0" step="0.01" /></label>
+    </div>
+    <div class="row2">
+      <label>Lodging nights <input id="cLodgingNights" type="number" min="0" step="1" /></label>
+      <label>Rate / night $ <input id="cLodgingRate" type="number" min="0" step="0.01" /></label>
+    </div>
+    <div class="row2">
+      <label>Registration $ <input id="cRegistration" type="number" min="0" step="0.01" /></label>
+      <label>Additional $ <input id="cAdditional" type="number" min="0" step="0.01" /></label>
+    </div>
+    <label>Meals included with registration (count)
+      <span class="meals">B <input id="cMealsB" type="number" min="0" step="1" value="0" />
+      L <input id="cMealsL" type="number" min="0" step="1" value="0" />
+      D <input id="cMealsD" type="number" min="0" step="1" value="0" /></span>
+    </label>
+    <label>Additional fees are for <input id="cAdditionalDesc" type="text" /></label>
+    <p class="total">Estimated total: <strong id="grandTotal">$0.00</strong></p>
+
+    <h2>Funding</h2>
+    <label>TEWD
+      <select id="tewd">
+        <option value=""></option>
+        <option value="TEWD request">TEWD request</option>
+        <option value="Non-TEWD">Non-TEWD</option>
+      </select>
+    </label>
+
+    <details id="tp1" class="options">
+      <summary>Third-party reimbursement #1</summary>
+      <label>Entity name <input id="tp1Name" type="text" /></label>
+      <label>Project number <input id="tp1Project" type="text" /></label>
+      <label>Max reimbursement $ <input id="tp1Max" type="number" min="0" step="0.01" /></label>
+      <label><input id="tp1Packet" type="checkbox" /> 3rd-party packet to attach</label>
+      <div class="modes">
+        <label><input id="tp1Reg" type="checkbox" /> Registration</label>
+        <label><input id="tp1Lodging" type="checkbox" /> Lodging</label>
+        <label><input id="tp1Air" type="checkbox" /> Airfare/Luggage</label>
+        <label><input id="tp1Meals" type="checkbox" /> Meals</label>
+        <label><input id="tp1Ground" type="checkbox" /> Ground transport</label>
+      </div>
+      <label>Notes <input id="tp1Notes" type="text" /></label>
+    </details>
+
+    <details id="tp2" class="options">
+      <summary>Third-party reimbursement #2</summary>
+      <label>Entity name <input id="tp2Name" type="text" /></label>
+      <label>Project number <input id="tp2Project" type="text" /></label>
+      <label>Max reimbursement $ <input id="tp2Max" type="number" min="0" step="0.01" /></label>
+      <label><input id="tp2Packet" type="checkbox" /> 3rd-party packet to attach</label>
+      <div class="modes">
+        <label><input id="tp2Reg" type="checkbox" /> Registration</label>
+        <label><input id="tp2Lodging" type="checkbox" /> Lodging</label>
+        <label><input id="tp2Air" type="checkbox" /> Airfare/Luggage</label>
+        <label><input id="tp2Meals" type="checkbox" /> Meals</label>
+        <label><input id="tp2Ground" type="checkbox" /> Ground transport</label>
+      </div>
+      <label>Notes <input id="tp2Notes" type="text" /></label>
+    </details>
+
+    <label>Planner comments <input id="comments" type="text" /></label>
+
+    <div class="actions">
+      <label><input id="doDraft" type="checkbox" checked /> Create email draft to coordinator</label>
+      <label><input id="doRow" type="checkbox" checked /> Add row to Division planner</label>
+      <button id="submit" class="primary">Create travel request</button>
+    </div>
+  </section>
+
+  <section id="status" class="status" hidden></section>
+
+  <script src="../form.js"></script>
+  <script src="../graph.js"></script>
+  <script src="taskpane.js"></script>
+</body>
+</html>

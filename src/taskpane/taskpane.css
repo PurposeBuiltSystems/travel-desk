@@ -1,0 +1,48 @@
+/* Travel Desk task pane — suite look (blue header, quiet grays). */
+* { box-sizing: border-box; }
+body {
+  font-family: "Segoe UI", -apple-system, sans-serif;
+  margin: 0; padding: 0 12px 24px;
+  color: #242424; font-size: 13px; background: #fff;
+}
+.app-head { padding: 12px 0 4px; }
+.app-head h1 { margin: 0; font-size: 18px; color: #0f6cbd; }
+.app-head .sub { margin: 2px 0 0; color: #616161; font-size: 12px; }
+
+h2 { font-size: 13px; margin: 16px 0 6px; color: #0f6cbd; text-transform: uppercase; letter-spacing: .02em; }
+
+label { display: block; margin: 8px 0 0; color: #424242; }
+input[type="text"], input[type="date"], input[type="number"], select, textarea {
+  width: 100%; margin-top: 2px; padding: 6px 8px;
+  border: 1px solid #d1d1d1; border-radius: 4px; font: inherit;
+}
+textarea { resize: vertical; }
+.row2 { display: flex; gap: 8px; }
+.row2 label { flex: 1; }
+.modes { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; }
+.modes label, .actions label { display: inline-flex; align-items: center; gap: 5px; margin: 2px 0; }
+.modes input, .actions input, label input[type="checkbox"] { width: auto; }
+.meals { display: inline-flex; align-items: center; gap: 6px; }
+.meals input { width: 52px; }
+
+.total { margin: 10px 0 0; font-size: 14px; }
+.total strong { color: #0f6cbd; }
+
+.options { margin: 10px 0; border: 1px solid #e1e1e1; border-radius: 6px; padding: 8px 10px; }
+.options summary { cursor: pointer; font-weight: 600; color: #424242; }
+.options button { margin-top: 8px; }
+
+button {
+  font: inherit; padding: 7px 14px; border-radius: 4px; cursor: pointer;
+  border: 1px solid #d1d1d1; background: #fff; color: #242424;
+}
+button.primary { background: #0f6cbd; border-color: #0f6cbd; color: #fff; font-weight: 600; }
+button:disabled { opacity: .55; cursor: default; }
+
+.actions { margin-top: 16px; display: flex; flex-direction: column; gap: 6px; }
+.actions button { margin-top: 6px; }
+
+.status { margin: 12px 0; padding: 9px 11px; border-radius: 6px; font-size: 12.5px; word-break: break-word; }
+.status.info  { background: #e7f2e9; color: #0e5c2f; }
+.status.work  { background: #eff6fc; color: #0f548c; }
+.status.error { background: #fdf3f4; color: #a4262c; }

@@ -50,16 +50,18 @@
   }
 
   /**
-   * Iowa fiscal years for a date. SFY runs Jul 1–Jun 30 (SFY27 = Jul 2026–
-   * Jun 2027); FFY runs Oct 1–Sep 30.
+   * Fiscal-year label for a date, for any org's fiscal calendar.
+   * startMonth 1 = calendar year ("FY27" = 2027); otherwise the fiscal year
+   * is numbered by its ENDING year (start 7: Jul 2026–Jun 2027 = 27; start
+   * 10 = US federal). Prefix is the org's convention ("FY", "SFY", "FFY").
    */
-  function fiscalYears(isoDate) {
+  function fiscalLabel(isoDate, startMonth, prefix) {
     var d = new Date(String(isoDate || "") + "T00:00:00");
-    if (isNaN(d)) { return { sfy: "", ffy: "" }; }
+    if (isNaN(d)) { return ""; }
+    var start = Number(startMonth) || 1;
     var y = d.getFullYear(), m = d.getMonth() + 1;
-    var sfy = m >= 7 ? y + 1 : y;
-    var ffy = m >= 10 ? y + 1 : y;
-    return { sfy: "SFY" + String(sfy).slice(-2), ffy: "FFY" + String(ffy).slice(-2) };
+    var fy = start === 1 ? y : (m >= start ? y + 1 : y);
+    return (prefix == null || prefix === "" ? "FY" : prefix) + String(fy).slice(-2);
   }
 
   /** Summary of third-party reimbursement for the planner column. */
@@ -83,29 +85,32 @@
 
   /**
    * Map the trip onto a planner table row by HEADER NAME (fuzzy, lowercase
-   * contains) so the add-in survives template drift between fiscal years.
-   * Unknown headers get "" (never invents data).
+   * contains) so the add-in survives template drift between fiscal years —
+   * and works against ANY org's planner columns. Unknown headers get ""
+   * (never invents data). opts: {fyStartMonth, fyPrefix} per org settings.
    */
-  function plannerRow(headers, model) {
+  function plannerRow(headers, model, opts) {
+    opts = opts || {};
     var totals = computeTotals(model);
-    var fy = fiscalYears(model.eventStart || model.departDate);
+    var fy = fiscalLabel(model.eventStart || model.departDate, opts.fyStartMonth, opts.fyPrefix);
+    var funding = model.funding || model.tewd || "";
     return (headers || []).map(function (h) {
       var k = String(h || "").toLowerCase();
       if (!k) { return ""; }
-      if (k.indexOf("event") !== -1) { return model.event || ""; }
-      if (k.indexOf("city") !== -1 || k.indexOf("location") !== -1) { return model.location || ""; }
-      if (k.indexOf("start") !== -1) { return model.eventStart || model.departDate || ""; }
-      if (k.indexOf("division") !== -1) { return model.division || ""; }
-      if (k.indexOf("bureau") !== -1) { return model.bureau || ""; }
-      if (k.indexOf("attendee") !== -1 && k.indexOf("role") === -1) { return model.name || ""; }
+      if (k.indexOf("event") !== -1 || k.indexOf("conference") !== -1) { return model.event || ""; }
+      if (k.indexOf("city") !== -1 || k.indexOf("location") !== -1 || k.indexOf("destination") !== -1) { return model.location || ""; }
+      if (k.indexOf("start") !== -1 || k.indexOf("date") !== -1) { return model.eventStart || model.departDate || ""; }
+      if (k.indexOf("division") !== -1 || k.indexOf("department") !== -1) { return model.division || ""; }
+      if (k.indexOf("bureau") !== -1 || k.indexOf("office") !== -1 || k.indexOf("team") !== -1) { return model.bureau || ""; }
+      if ((k.indexOf("attendee") !== -1 || k.indexOf("traveler") !== -1 || k.indexOf("name") !== -1) && k.indexOf("role") === -1) { return model.name || ""; }
       if (k.indexOf("role") !== -1) { return model.attendeeRole || ""; }
-      if (k.indexOf("cost") !== -1) { return totals.grand ? String(Math.round(totals.grand)) : ""; }
+      if (k.indexOf("cost") !== -1 || k.indexOf("estimate") !== -1) { return totals.grand ? String(Math.round(totals.grand)) : ""; }
       if (k.indexOf("third") !== -1 || k.indexOf("grant") !== -1) { return thirdPartySummary(model); }
-      if (k.indexOf("%") !== -1 || k.indexOf("reimburse %") !== -1) { return reimbursePct(model); }
-      if (k.indexOf("fiscal") !== -1) { return fy.sfy; }
-      if (k.indexOf("tewd") !== -1) { return model.tewd || ""; }
-      if (k.indexOf("comment") !== -1) { return model.comments || ""; }
-      if (k.indexOf("coo") !== -1) { return ""; } // coordinator's column, never ours
+      if (k.indexOf("%") !== -1) { return reimbursePct(model); }
+      if (k.indexOf("fiscal") !== -1) { return fy; }
+      if (k.indexOf("tewd") !== -1 || k.indexOf("funding") !== -1 || k.indexOf("program") !== -1) { return funding; }
+      if (k.indexOf("comment") !== -1 || k.indexOf("note") !== -1) { return model.comments || ""; }
+      if (k.indexOf("coo") !== -1 || k.indexOf("approv") !== -1) { return ""; } // approver's column, never ours
       return "";
     });
   }
@@ -133,15 +138,22 @@
       (t.notes ? "<p><strong>Reimbursement notes:</strong> " + esc(t.notes) + "</p>" : "");
   }
 
-  /** Printable Travel Authorization form — mirrors the Iowa DOT PDF fields. */
-  function formHtml(model) {
+  /**
+   * Printable Travel Authorization form. Field set mirrors the common
+   * travel-auth shape (originally modeled on Iowa DOT's form). opts:
+   * {orgName, fundingLabel} from org settings.
+   */
+  function formHtml(model, opts) {
+    opts = opts || {};
     var c = model.costs || {};
     var m = model.modes || {};
     var totals = computeTotals(model);
+    var funding = model.funding || model.tewd || "";
     var meals = "B: " + esc(c.mealsB || "0") + " &nbsp; L: " + esc(c.mealsL || "0") + " &nbsp; D: " + esc(c.mealsD || "0");
     return [
       '<div style="font-family:Segoe UI,Arial,sans-serif;max-width:640px;color:#242424">',
-      '<h2 style="color:#0f6cbd;margin-bottom:2px">Iowa DOT &mdash; Travel Authorization Request</h2>',
+      '<h2 style="color:#0f6cbd;margin-bottom:2px">' +
+        (opts.orgName ? esc(opts.orgName) + " &mdash; " : "") + "Travel Authorization Request</h2>",
       '<style>table.fields{border-collapse:collapse;width:100%;margin:6px 0}table.fields td{border-bottom:1px solid #e1e1e1;padding:4px 6px;vertical-align:top}td.lbl{width:42%;color:#616161}td.val{font-weight:600}h3{margin:14px 0 2px;color:#0f6cbd}p.items{margin:4px 0}</style>',
       '<table class="fields">',
       fieldRow("Name & Cost Center", (model.name || "") + (model.costCenter ? " — " + model.costCenter : "")),
@@ -167,8 +179,9 @@
       "</table>",
       thirdPartyHtml((model.thirdParties || [])[0], "First"),
       thirdPartyHtml((model.thirdParties || [])[1], "Second"),
+      funding ? "<p><strong>" + esc(opts.fundingLabel || "Funding") + ":</strong> " + esc(funding) + "</p>" : "",
       model.meetingLink ? "<p><strong>Meeting / event link:</strong> " + esc(model.meetingLink) + "</p>" : "",
-      '<p style="color:#616161;font-size:12px">Generated by Travel Desk. The matching row was added to the Division travel planner.</p>',
+      '<p style="color:#616161;font-size:12px">Generated by Travel Desk. The matching row was added to the shared travel planner.</p>',
       "</div>",
     ].join("\n");
   }
@@ -176,7 +189,7 @@
   var api = {
     computeTotals: computeTotals,
     subjectLine: subjectLine,
-    fiscalYears: fiscalYears,
+    fiscalLabel: fiscalLabel,
     plannerRow: plannerRow,
     thirdPartySummary: thirdPartySummary,
     reimbursePct: reimbursePct,

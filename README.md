@@ -1,11 +1,11 @@
 # Travel Desk
 
 Outlook add-in that turns one filled-out travel request into **both** artifacts
-the Iowa DOT out-of-state travel process needs:
+an email-plus-spreadsheet travel process needs:
 
 1. the **Travel Authorization** form as a printable email draft to the travel
    coordinator (structured subject: `Travel Auth - <Name> - <Event> - <Date>`),
-2. the matching **row in the Division travel planner** workbook on
+2. the matching **row in the shared travel planner** workbook on
    SharePoint/OneDrive — mapped by column header, so year-to-year template
    changes don't break it.
 
@@ -24,6 +24,14 @@ collection, deterministic logic (no AI).
   tables (list/headers/add row), draft creation.
 - `src/taskpane/` — the form UI.
 - `test/form.test.js` — offline tests (`node test/form.test.js`).
+
+## Org profiles
+
+Coordinators configure once (workbook, table, coordinator email, org name,
+fiscal-year calendar, funding label) and click **Copy profile**; travelers
+paste the code and click **Apply** — fully set up in one step. Iowa DOT is
+simply one profile; any org that tracks travel in a shared spreadsheet and
+emails authorization forms can use its own.
 
 ## Deployment
 

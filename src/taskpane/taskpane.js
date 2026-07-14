@@ -36,15 +36,37 @@
     return s;
   }
 
+  // Settings fields that mirror a Setup input 1:1 (id === settings key).
+  var ORG_FIELDS = ["coordEmail", "orgName", "fyStartMonth", "fyPrefix", "fundingLabel"];
+  // What an org profile carries (coordinator → travelers). wbUrl/table ride
+  // along so one Apply fully configures a traveler.
+  var PROFILE_FIELDS = ORG_FIELDS.concat(["wbUrl", "tableName", "fundingOptions"]);
+
+  function applyOrgLabels() {
+    var s = settings();
+    var label = (s.fundingLabel || "").trim();
+    byId("fundingHead").hidden = byId("fundingWrap").hidden = !label && !byId("funding").value;
+    byId("fundingLabelText").textContent = label || "Funding program";
+    var dl = byId("fundingOptions");
+    dl.innerHTML = "";
+    String(s.fundingOptionsCsv || s.fundingOptions || "").split(",").forEach(function (v) {
+      v = v.trim();
+      if (!v) { return; }
+      var o = document.createElement("option");
+      o.value = v;
+      dl.appendChild(o);
+    });
+  }
+
   Office.onReady(function () {
     var s = settings();
     if (s.wbUrl) { byId("wbUrl").value = s.wbUrl; }
-    if (s.coordEmail) { byId("coordEmail").value = s.coordEmail; }
     if (s.tableName) {
       var opt = document.createElement("option");
       opt.value = opt.textContent = s.tableName;
       byId("tableName").appendChild(opt);
     }
+    ORG_FIELDS.forEach(function (k) { if (s[k] != null && s[k] !== "") { byId(k).value = s[k]; } });
     ["name", "costCenter", "division", "bureau"].forEach(function (k) {
       if (s[k]) { byId(k).value = s[k]; }
     });
@@ -53,14 +75,62 @@
       if (prof && prof.displayName) { byId("name").value = prof.displayName; }
     }
     if (!s.wbUrl) { byId("setup").setAttribute("open", "open"); }
+    applyOrgLabels();
 
     byId("connect").addEventListener("click", connectWorkbook);
     byId("submit").addEventListener("click", submit);
+    byId("profileCopy").addEventListener("click", profileCopy);
+    byId("profileApply").addEventListener("click", profileApply);
+    ORG_FIELDS.forEach(function (k) {
+      byId(k).addEventListener("change", function () {
+        var patch = {};
+        patch[k] = byId(k).value;
+        saveSettings(patch);
+        applyOrgLabels();
+      });
+    });
     ["cTravelMode", "cLuggage", "cParking", "cTaxi", "cLodgingNights",
      "cLodgingRate", "cRegistration", "cAdditional"].forEach(function (id) {
       byId(id).addEventListener("input", refreshTotal);
     });
   });
+
+  // ---------- org profile (share setup with the team) ----------
+
+  function profileCopy() {
+    var s = settings();
+    var out = {};
+    PROFILE_FIELDS.forEach(function (k) { if (s[k]) { out[k] = s[k]; } });
+    var blob = btoa(unescape(encodeURIComponent(JSON.stringify(out))));
+    byId("profileBlob").value = blob;
+    byId("profileBlob").select();
+    try { document.execCommand("copy"); } catch (e) { /* user copies manually */ }
+    setStatus("info", "Profile code is in the box (and copied). Send it to your travelers.");
+  }
+
+  function profileApply() {
+    try {
+      var raw = byId("profileBlob").value.trim();
+      if (!raw) { setStatus("error", "Paste the profile code from your coordinator first."); return; }
+      var p = JSON.parse(decodeURIComponent(escape(atob(raw))));
+      var patch = {};
+      PROFILE_FIELDS.forEach(function (k) { if (p[k] != null) { patch[k] = p[k]; } });
+      saveSettings(patch);
+      ORG_FIELDS.forEach(function (k) { if (patch[k] != null) { byId(k).value = patch[k]; } });
+      if (patch.wbUrl) { byId("wbUrl").value = patch.wbUrl; }
+      if (patch.tableName) {
+        var sel = byId("tableName");
+        sel.innerHTML = "";
+        var opt = document.createElement("option");
+        opt.value = opt.textContent = patch.tableName;
+        sel.appendChild(opt);
+      }
+      applyOrgLabels();
+      setStatus("info", "Profile applied" + (patch.wbUrl ? " — click Connect workbook to finish." : "."));
+    } catch (e) {
+      setStatus("error", "That doesn't look like a valid profile code.");
+    }
+  }
 
   function refreshTotal() {
     byId("grandTotal").textContent = "$" +
@@ -133,7 +203,7 @@
       reason: byId("reason").value.trim(),
       meetingLink: byId("meetingLink").value.trim(),
       comments: byId("comments").value.trim(),
-      tewd: byId("tewd").value,
+      funding: byId("funding").value.trim(),
       modes: {
         personal: byId("modePersonal").checked,
         state: byId("modeState").checked,
@@ -176,11 +246,17 @@
     try {
       var token = await GraphData.getToken();
       var done = [];
+      var orgOpts = {
+        orgName: s.orgName || "",
+        fundingLabel: s.fundingLabel || "",
+        fyStartMonth: Number(s.fyStartMonth) || 1,
+        fyPrefix: s.fyPrefix || "FY",
+      };
 
       if (doDraft) {
         setStatus("work", "Creating the Travel Authorization draft…");
         await GraphData.createDraft(token, byId("coordEmail").value.trim(),
-          TravelForm.subjectLine(m), TravelForm.formHtml(m));
+          TravelForm.subjectLine(m), TravelForm.formHtml(m, orgOpts));
         done.push("draft in your Drafts folder (review and send)");
       }
 
@@ -188,7 +264,7 @@
         setStatus("work", "Adding the planner row…");
         var ref = wbRef || s.wbRef;
         var headers = await GraphData.tableHeaders(token, ref, s.tableName);
-        await GraphData.addTableRow(token, ref, s.tableName, TravelForm.plannerRow(headers, m));
+        await GraphData.addTableRow(token, ref, s.tableName, TravelForm.plannerRow(headers, m, orgOpts));
         done.push("row added to " + (ref.name || "the planner"));
       }
 

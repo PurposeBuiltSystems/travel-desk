@@ -16,21 +16,49 @@
 <body>
   <header class="app-head">
     <h1>Travel Desk</h1>
-    <p class="sub">One entry &rarr; the Travel Authorization email and the Division planner row.</p>
+    <p class="sub">One entry &rarr; the Travel Authorization email and the planner spreadsheet row.</p>
   </header>
 
   <details id="setup" class="options">
     <summary>Setup (once)</summary>
     <label>Planner workbook link (SharePoint/OneDrive "Copy link")
-      <input id="wbUrl" type="text" placeholder="https://iowadot.sharepoint.com/..." />
+      <input id="wbUrl" type="text" placeholder="https://yourorg.sharepoint.com/..." />
     </label>
     <button id="connect">Connect workbook</button>
     <label>Planner table
       <select id="tableName"></select>
     </label>
     <label>Coordinator email
-      <input id="coordEmail" type="text" value="Keri.Greenfield@iowadot.us" />
+      <input id="coordEmail" type="text" placeholder="travel.coordinator@yourorg.com" />
     </label>
+    <label>Organization name (on the generated form)
+      <input id="orgName" type="text" placeholder="Acme County Public Works" />
+    </label>
+    <div class="row2">
+      <label>Fiscal year starts
+        <select id="fyStartMonth">
+          <option value="1">January (calendar)</option>
+          <option value="7">July (most states)</option>
+          <option value="10">October (federal)</option>
+          <option value="4">April</option>
+        </select>
+      </label>
+      <label>FY label prefix
+        <input id="fyPrefix" type="text" placeholder="FY" />
+      </label>
+    </div>
+    <label>Funding program label (blank to hide)
+      <input id="fundingLabel" type="text" placeholder="e.g. TEWD, Grant, Program" />
+    </label>
+    <details class="options">
+      <summary>Org profile (share setup with your team)</summary>
+      <p class="hint">Coordinators: configure above, click Copy profile, and send the code to travelers. Travelers: paste the code and click Apply.</p>
+      <textarea id="profileBlob" rows="3" placeholder="Profile code"></textarea>
+      <div class="row2">
+        <button id="profileCopy">Copy profile</button>
+        <button id="profileApply">Apply profile</button>
+      </div>
+    </details>
   </details>
 
   <section class="form">
@@ -88,13 +116,10 @@
     <label>Additional fees are for <input id="cAdditionalDesc" type="text" /></label>
     <p class="total">Estimated total: <strong id="grandTotal">$0.00</strong></p>
 
-    <h2>Funding</h2>
-    <label>TEWD
-      <select id="tewd">
-        <option value=""></option>
-        <option value="TEWD request">TEWD request</option>
-        <option value="Non-TEWD">Non-TEWD</option>
-      </select>
+    <h2 id="fundingHead">Funding</h2>
+    <label id="fundingWrap"><span id="fundingLabelText">Funding program</span>
+      <input id="funding" type="text" list="fundingOptions" />
+      <datalist id="fundingOptions"></datalist>
     </label>
 
     <details id="tp1" class="options">
@@ -140,8 +165,8 @@
 
   <section id="status" class="status" hidden></section>
 
-  <script src="../form.js"></script>
-  <script src="../graph.js"></script>
-  <script src="taskpane.js"></script>
+  <script src="../form.js?v=2"></script>
+  <script src="../graph.js?v=2"></script>
+  <script src="taskpane.js?v=2"></script>
 </body>
 </html>

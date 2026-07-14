@@ -24,7 +24,7 @@ var model = {
   returnDate: "2027-01-15",
   reason: "US Planning chair",
   attendeeRole: "committee member",
-  tewd: "Non-TEWD",
+  funding: "Non-TEWD",
   comments: "BIM TPF",
   modes: { personal: false, state: false, air: true },
   costs: {
@@ -52,19 +52,21 @@ check("num strips $ and commas", F._internals.num("$1,250.50"), 1250.5);
 check("subject", F.subjectLine(model), "Travel Auth - Miller - TRB Annual Meeting - 2027-01-10");
 check("subject last-first name", F.subjectLine({ name: "Miller, Matt", event: "X" }), "Travel Auth - Miller - X");
 
-// 4. Iowa fiscal years (SFY Jul-Jun, FFY Oct-Sep)
-check("SFY for Jan 2027", F.fiscalYears("2027-01-10").sfy, "SFY27");
-check("FFY for Jan 2027", F.fiscalYears("2027-01-10").ffy, "FFY27");
-check("SFY for Aug 2026", F.fiscalYears("2026-08-15").sfy, "SFY27");
-check("FFY for Aug 2026", F.fiscalYears("2026-08-15").ffy, "FFY26");
-check("FFY for Oct 2026", F.fiscalYears("2026-10-02").ffy, "FFY27");
-check("bad date", F.fiscalYears("").sfy, "");
+// 4. Fiscal-year labels for any org calendar
+check("Iowa SFY for Jan 2027", F.fiscalLabel("2027-01-10", 7, "SFY"), "SFY27");
+check("Iowa SFY for Aug 2026", F.fiscalLabel("2026-08-15", 7, "SFY"), "SFY27");
+check("Federal FFY for Aug 2026", F.fiscalLabel("2026-08-15", 10, "FFY"), "FFY26");
+check("Federal FFY for Oct 2026", F.fiscalLabel("2026-10-02", 10, "FFY"), "FFY27");
+check("Calendar FY", F.fiscalLabel("2027-03-01", 1, "FY"), "FY27");
+check("Default prefix", F.fiscalLabel("2027-03-01", 1, ""), "FY27");
+check("bad date", F.fiscalLabel("", 7, "SFY"), "");
 
 // 5. Planner row mapped against the real SFY27 template headers
 var headers27 = ["Event Name", "City, State", "Start date", "Division", "Bureau",
   "Planned Attendee", "Estimated\nCost", "Third-party or grant reimburse?",
   "Reimburse %", "State fiscal year", "TEWD request", "Additional Comments"];
-var row = F.plannerRow(headers27, model);
+var IOWA = { fyStartMonth: 7, fyPrefix: "SFY" };
+var row = F.plannerRow(headers27, model, IOWA);
 check("row event", row[0], "TRB Annual Meeting");
 check("row city", row[1], "Washington, DC");
 check("row start", row[2], "2027-01-10");
@@ -82,7 +84,7 @@ check("row comments", row[11], "BIM TPF");
 var headers26 = ["Event Name", "City, State", "Start date", "Planned Attendee",
   "Attendee role", "Estimated\nCost", "Third-party or grant reimburse?",
   "Reimburse %", "TEWD", "COO approved"];
-var row26 = F.plannerRow(headers26, model);
+var row26 = F.plannerRow(headers26, model, IOWA);
 check("row26 role", row26[4], "committee member");
 check("row26 coo blank", row26[9], "");
 check("row26 tewd", row26[8], "Non-TEWD");
@@ -91,12 +93,29 @@ check("row26 tewd", row26[8], "Non-TEWD");
 check("no third party", F.thirdPartySummary({ thirdParties: [] }), "No");
 check("no pct without reimb", F.reimbursePct({ costs: { registration: "100" }, thirdParties: [] }), "");
 
-// 8. Form HTML: escaped, totals included, checkbox states
-var html = F.formHtml(model);
+// 8. Generic-org planner headers (non-Iowa) map too
+var headersGeneric = ["Traveler Name", "Conference", "Destination", "Trip Start Date",
+  "Department", "Estimated Cost", "Funding Source", "Approved?"];
+var rowG = F.plannerRow(headersGeneric, model, { fyStartMonth: 1, fyPrefix: "FY" });
+check("generic traveler", rowG[0], "Matt Miller");
+check("generic conference", rowG[1], "TRB Annual Meeting");
+check("generic destination", rowG[2], "Washington, DC");
+check("generic date", rowG[3], "2027-01-10");
+check("generic department", rowG[4], "System Ops");
+check("generic cost", rowG[5], "2650");
+check("generic funding", rowG[6], "Non-TEWD");
+check("generic approver column blank", rowG[7], "");
+
+// 9. Form HTML: escaped, totals included, org branding
+var html = F.formHtml(model, { orgName: "Iowa DOT", fundingLabel: "TEWD" });
 check("html has total", html.indexOf("$2,650.00") !== -1, true);
 check("html has lodging math", html.indexOf("5 nights @ $250.00 = $1,250.00") !== -1, true);
 var xss = F.formHtml({ name: "<script>x</script>", costs: {}, modes: {}, thirdParties: [] });
 check("html escapes", xss.indexOf("<script>") === -1, true);
+check("html org name", html.indexOf("Iowa DOT") !== -1, true);
+check("html funding label", html.indexOf("TEWD") !== -1, true);
+var noOrg = F.formHtml(model, {});
+check("html works with no org", noOrg.indexOf("Travel Authorization Request") !== -1, true);
 
 if (failures) {
   console.error("\n" + failures + " form test(s) FAILED");

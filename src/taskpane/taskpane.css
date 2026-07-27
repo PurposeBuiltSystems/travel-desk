@@ -54,3 +54,10 @@ input, select, textarea, button { max-width: 100%; box-sizing: border-box; }
 .row2 label { flex: 1 1 130px; min-width: 0; }
 .modes { flex-wrap: wrap; }
 .meals input { max-width: 52px; }
+
+.just-chips { margin: 6px 0 2px; }
+.just-chips button {
+  font: inherit; font-size: 11.5px; padding: 3px 10px; margin: 2px 3px 2px 0;
+  border-radius: 999px; border: 1px dashed #0f6cbd; background: #fff; color: #0f548c; cursor: pointer;
+}
+.just-chips button:hover { background: #eff6fc; }

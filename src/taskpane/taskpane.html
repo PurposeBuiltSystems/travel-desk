@@ -83,7 +83,18 @@
       <label>Departure <input id="departDate" type="date" /></label>
       <label>Return <input id="returnDate" type="date" /></label>
     </div>
-    <label>Reason for travel <textarea id="reason" rows="2"></textarea></label>
+    <label>Reason for travel <textarea id="reason" rows="3"></textarea></label>
+    <div class="just-chips" id="justChips">
+      <span class="hint" style="display:block;margin:2px 0 4px">Tap to add a justification (edit after):</span>
+      <button type="button" data-txt="This event provides professional development directly relevant to my role and maintains the skills and knowledge the position requires.">Professional development</button>
+      <button type="button" data-txt="I serve as a member of the hosting committee/organization, and attendance is an expected obligation of that role.">Committee / key member</button>
+      <button type="button" data-txt="The Department is a contributing member of this pooled fund study; attendance fulfills our participation obligations and protects the Department's investment.">Pooled fund member</button>
+      <button type="button" data-txt="The subject matter directly supports a current focus area of the Department, and attendance advances that initiative.">Department focus</button>
+      <button type="button" data-txt="The event provides direct engagement with industry partners and peer agencies, maintaining relationships and awareness of practices that benefit the Department.">Industry engagement</button>
+      <button type="button" data-txt="I am presenting on behalf of the Department at this event.">Presenting / speaking</button>
+      <button type="button" data-txt="I am the Department's designated representative to this organization.">Designated representative</button>
+      <button type="button" data-txt="A third party reimburses the majority of costs, minimizing Department expense while retaining the benefits of participation.">Third-party funded</button>
+    </div>
     <label>Meeting / event link <input id="meetingLink" type="text" /></label>
 
     <h2>Travel &amp; costs</h2>
@@ -165,8 +176,8 @@
 
   <section id="status" class="status" hidden></section>
 
-  <script src="../form.js?v=3"></script>
-  <script src="../graph.js?v=3"></script>
-  <script src="taskpane.js?v=3"></script>
+  <script src="../form.js?v=4"></script>
+  <script src="../graph.js?v=4"></script>
+  <script src="taskpane.js?v=4"></script>
 </body>
 </html>

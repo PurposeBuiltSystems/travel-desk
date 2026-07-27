@@ -78,6 +78,12 @@
     applyOrgLabels();
 
     byId("connect").addEventListener("click", connectWorkbook);
+    byId("justChips").addEventListener("click", function (ev) {
+      var t = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-txt");
+      if (!t) { return; }
+      var box = byId("reason");
+      box.value = (box.value.trim() ? box.value.trim() + " " : "") + t;
+    });
     byId("submit").addEventListener("click", submit);
     byId("profileCopy").addEventListener("click", profileCopy);
     byId("profileApply").addEventListener("click", profileApply);

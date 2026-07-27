@@ -78,6 +78,11 @@
     applyOrgLabels();
 
     byId("connect").addEventListener("click", connectWorkbook);
+    byId("wbBrowse").addEventListener("click", browseWorkbooks);
+    byId("wbSearch").addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") { ev.preventDefault(); browseWorkbooks(); }
+    });
+    byId("wbPick").addEventListener("change", pickWorkbook);
     byId("savePlanner").addEventListener("click", savePlanner);
     byId("plannerList").addEventListener("click", function (ev) {
       var k = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-del");
@@ -192,6 +197,81 @@
     byId("grandTotal").textContent = "$" +
       TravelForm.computeTotals(model()).grand.toLocaleString("en-US",
         { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  var pickerRefs = [];
+
+  async function browseWorkbooks() {
+    byId("wbBrowse").disabled = true;
+    try {
+      var q = byId("wbSearch").value.trim();
+      setStatus("work", q ? 'Searching your files for \u201c' + q + '\u201d\u2026' : "Loading your recent workbooks\u2026");
+      var token = await GraphData.getToken();
+      var found;
+      if (q) {
+        found = await GraphData.searchWorkbooks(token, q);
+      } else {
+        var recent = await GraphData.recentWorkbooks(token);
+        var shared = [];
+        try { shared = await GraphData.sharedWorkbooks(token); } catch (e) { /* optional */ }
+        var seen = {};
+        found = [];
+        recent.concat(shared).forEach(function (r) {
+          var k = r.driveId + "|" + r.itemId;
+          if (seen[k]) { return; }
+          seen[k] = true;
+          found.push(r);
+        });
+      }
+      pickerRefs = found;
+      var sel = byId("wbPick");
+      sel.innerHTML = "";
+      var o0 = document.createElement("option");
+      o0.value = ""; o0.textContent = found.length ? "Pick a workbook (" + found.length + ")\u2026" : "No workbooks found \u2014 search or paste a link";
+      sel.appendChild(o0);
+      found.forEach(function (r, i) {
+        var o = document.createElement("option");
+        o.value = String(i);
+        o.textContent = r.name;
+        sel.appendChild(o);
+      });
+      setStatus(found.length ? "info" : "error",
+        found.length ? found.length + " workbook(s) \u2014 pick your planner." :
+        "Nothing matched. Try a search term, or paste the workbook's Copy-link below.");
+    } catch (e) {
+      setStatus("error", "Couldn't list your files: " + ((e && e.message) || e));
+    } finally {
+      byId("wbBrowse").disabled = false;
+    }
+  }
+
+  async function pickWorkbook() {
+    var idx = byId("wbPick").value;
+    if (idx === "") { return; }
+    var ref = pickerRefs[Number(idx)];
+    if (!ref) { return; }
+    try {
+      setStatus("work", 'Opening \u201c' + ref.name + '\u201d\u2026');
+      var token = await GraphData.getToken();
+      var tables = await GraphData.listTables(token, ref);
+      if (!tables.length) {
+        setStatus("error", '\u201c' + ref.name + '\u201d has no Excel Table. In Excel: select the planner\u2019s header row and data, Insert > Table, then pick it again.');
+        return;
+      }
+      wbRef = ref;
+      byId("wbUrl").value = ref.webUrl || "";
+      var sel = byId("tableName");
+      sel.innerHTML = "";
+      tables.forEach(function (t) {
+        var opt = document.createElement("option");
+        opt.value = opt.textContent = t;
+        sel.appendChild(opt);
+      });
+      saveSettings({ wbUrl: ref.webUrl || "", tableName: tables[0], wbRef: ref });
+      setStatus("info", "Connected: " + ref.name + " \u2014 table \u201c" + tables[0] + "\u201d. Set its fiscal year above and click Save planner.");
+    } catch (e) {
+      setStatus("error", "Couldn't open that workbook: " + ((e && e.message) || e));
+    }
   }
 
   async function connectWorkbook() {

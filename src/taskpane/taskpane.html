@@ -21,7 +21,14 @@
 
   <details id="setup" class="options">
     <summary>Setup (once)</summary>
-    <label>Planner workbook link (SharePoint/OneDrive "Copy link")
+    <label>Pick your planner workbook
+      <select id="wbPick"><option value="">Click \u201cShow my files\u201d\u2026</option></select>
+    </label>
+    <div class="row2">
+      <button id="wbBrowse">Show my files</button>
+      <input id="wbSearch" type="text" placeholder="or search by name\u2026" />
+    </div>
+    <label>Or paste a link (SharePoint/OneDrive "Copy link")
       <input id="wbUrl" type="text" placeholder="https://yourorg.sharepoint.com/..." />
     </label>
     <button id="connect">Connect workbook</button>
@@ -181,8 +188,8 @@
 
   <section id="status" class="status" hidden></section>
 
-  <script src="../form.js?v=5"></script>
-  <script src="../graph.js?v=5"></script>
-  <script src="taskpane.js?v=5"></script>
+  <script src="../form.js?v=6"></script>
+  <script src="../graph.js?v=6"></script>
+  <script src="taskpane.js?v=6"></script>
 </body>
 </html>

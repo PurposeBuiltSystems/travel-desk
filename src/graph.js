@@ -100,6 +100,45 @@
       { values: [rowValues] });
   }
 
+  /** Normalize a driveItem (handles remoteItem for shared/SharePoint files). */
+  function itemRef(it) {
+    var r = it.remoteItem || it;
+    var pr = r.parentReference || {};
+    if (!r.id || !pr.driveId) { return null; }
+    return { driveId: pr.driveId, itemId: r.id, name: r.name || it.name || "workbook",
+             webUrl: r.webUrl || it.webUrl || "" };
+  }
+
+  function xlsxOnly(items) {
+    var out = [];
+    (items || []).forEach(function (it) {
+      var name = (it.remoteItem && it.remoteItem.name) || it.name || "";
+      if (!/\.xlsx$/i.test(name)) { return; }
+      var ref = itemRef(it);
+      if (ref) { out.push(ref); }
+    });
+    return out;
+  }
+
+  /** Recently used workbooks — spans OneDrive AND SharePoint files you've opened. */
+  async function recentWorkbooks(token) {
+    var res = await graphJson(token, "GET", "/me/drive/recent?$top=50");
+    return xlsxOnly(res.value);
+  }
+
+  /** Workbooks shared with the signed-in user. */
+  async function sharedWorkbooks(token) {
+    var res = await graphJson(token, "GET", "/me/drive/sharedWithMe");
+    return xlsxOnly(res.value);
+  }
+
+  /** Search the user's OneDrive by name. */
+  async function searchWorkbooks(token, q) {
+    var res = await graphJson(token, "GET",
+      "/me/drive/root/search(q='" + encodeURIComponent(String(q).replace(/'/g, "")) + "')?$top=25");
+    return xlsxOnly(res.value);
+  }
+
   // ---------- mail ----------
 
   /** Create the Travel Authorization email as a DRAFT (never sent). */
@@ -114,6 +153,9 @@
   root.GraphData = {
     getToken: getToken,
     resolveWorkbook: resolveWorkbook,
+    recentWorkbooks: recentWorkbooks,
+    sharedWorkbooks: sharedWorkbooks,
+    searchWorkbooks: searchWorkbooks,
     listTables: listTables,
     tableHeaders: tableHeaders,
     addTableRow: addTableRow,

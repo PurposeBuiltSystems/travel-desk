@@ -110,6 +110,7 @@
       if (k.indexOf("fiscal") !== -1) { return fy; }
       if (k.indexOf("tewd") !== -1 || k.indexOf("funding") !== -1 || k.indexOf("program") !== -1) { return funding; }
       if (k.indexOf("comment") !== -1 || k.indexOf("note") !== -1) { return model.comments || ""; }
+      if (k.indexOf("status") !== -1 || k.indexOf("booked") !== -1) { return "Requested"; } // coordinator's follow-up queue
       if (k.indexOf("coo") !== -1 || k.indexOf("approv") !== -1) { return ""; } // approver's column, never ours
       return "";
     });

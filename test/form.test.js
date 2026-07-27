@@ -147,6 +147,11 @@ var mb2 = F.matchBooking(trip, mails2);
 check("ambiguous -> no confident", mb2.confident, null);
 check("candidates in window", mb2.candidates.length, 3);
 
+// 12. Status column -> "Requested" (coordinator follow-up queue)
+var stRow = F.plannerRow(["Event Name", "Status", "COO approved"], model, { fyStartMonth: 7, fyPrefix: "SFY" });
+check("status column requested", stRow[1], "Requested");
+check("approval column still blank", stRow[2], "");
+
 if (failures) {
   console.error("\n" + failures + " form test(s) FAILED");
   process.exit(1);

@@ -61,3 +61,5 @@ input, select, textarea, button { max-width: 100%; box-sizing: border-box; }
   border-radius: 999px; border: 1px dashed #0f6cbd; background: #fff; color: #0f548c; cursor: pointer;
 }
 .just-chips button:hover { background: #eff6fc; }
+.chip-del { font-size: 10.5px; padding: 1px 8px; border-radius: 999px; border: 1px solid #d1d1d1;
+  background: #fff; color: #a4262c; cursor: pointer; margin-left: 4px; }

@@ -40,7 +40,7 @@
   var ORG_FIELDS = ["coordEmail", "orgName", "fyStartMonth", "fyPrefix", "fundingLabel"];
   // What an org profile carries (coordinator → travelers). wbUrl/table ride
   // along so one Apply fully configures a traveler.
-  var PROFILE_FIELDS = ORG_FIELDS.concat(["wbUrl", "tableName", "fundingOptions"]);
+  var PROFILE_FIELDS = ORG_FIELDS.concat(["wbUrl", "tableName", "fundingOptions", "planners"]);
 
   function applyOrgLabels() {
     var s = settings();
@@ -78,6 +78,23 @@
     applyOrgLabels();
 
     byId("connect").addEventListener("click", connectWorkbook);
+    byId("savePlanner").addEventListener("click", savePlanner);
+    byId("plannerList").addEventListener("click", function (ev) {
+      var k = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-del");
+      if (!k) { return; }
+      var st = settings();
+      var pl = st.planners || {};
+      delete pl[k];
+      saveSettings({ planners: pl });
+      renderPlannerList();
+      setStatus("info", (k === "*" ? "Catch-all planner" : k + " planner") + " removed.");
+    });
+    if (!byId("wbFy").value) {
+      var today = new Date();
+      var iso = today.getFullYear() + "-" + (today.getMonth() + 1) + "-" + today.getDate();
+      byId("wbFy").value = TravelForm.fiscalLabel(iso, s.fyStartMonth, s.fyPrefix) || "";
+    }
+    renderPlannerList();
     byId("justChips").addEventListener("click", function (ev) {
       var t = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-txt");
       if (!t) { return; }
@@ -136,6 +153,39 @@
     } catch (e) {
       setStatus("error", "That doesn't look like a valid profile code.");
     }
+  }
+
+  function renderPlannerList() {
+    var el = byId("plannerList");
+    var pl = settings().planners || {};
+    var keys = Object.keys(pl);
+    if (!keys.length) {
+      el.innerHTML = "No year-specific planners saved yet \u2014 connect a workbook, set its fiscal year above, and click Save.";
+      return;
+    }
+    el.innerHTML = keys.sort().map(function (k) {
+      var name = (pl[k].wbRef && pl[k].wbRef.name) || pl[k].wbUrl || "workbook";
+      return "<b>" + (k === "*" ? "All years" : k) + "</b>: " + name + " \u00b7 " + (pl[k].tableName || "?") +
+        ' <button type="button" class="chip-del" data-del="' + k + '">remove</button>';
+    }).join("<br>");
+  }
+
+  function savePlanner() {
+    var st = settings();
+    if (!wbRef && !(st.wbRef)) {
+      setStatus("error", "Connect the workbook first, then save it for a year."); return;
+    }
+    var key = byId("wbFy").value.trim() || "*";
+    var pl = st.planners || {};
+    pl[key] = {
+      wbUrl: byId("wbUrl").value.trim(),
+      tableName: byId("tableName").value,
+      wbRef: wbRef || st.wbRef,
+    };
+    saveSettings({ planners: pl });
+    renderPlannerList();
+    setStatus("info", (key === "*" ? "Saved as the catch-all planner." :
+      "Saved as the " + key + " planner \u2014 trips dated in " + key + " will go there automatically."));
   }
 
   function refreshTotal() {
@@ -268,10 +318,24 @@
 
       if (doRow) {
         setStatus("work", "Adding the planner row…");
-        var ref = wbRef || s.wbRef;
-        var headers = await GraphData.tableHeaders(token, ref, s.tableName);
-        await GraphData.addTableRow(token, ref, s.tableName, TravelForm.plannerRow(headers, m, orgOpts));
-        done.push("row added to " + (ref.name || "the planner"));
+        var tripFy = TravelForm.fiscalLabel(m.eventStart || m.departDate, s.fyStartMonth, s.fyPrefix);
+        var picked = TravelForm.pickPlanner(s.planners, tripFy);
+        var ref, tableName;
+        if (picked) {
+          ref = picked.planner.wbRef;
+          tableName = picked.planner.tableName;
+        } else if (s.planners && Object.keys(s.planners).length) {
+          throw new Error("No planner saved for " + (tripFy || "that date") +
+            " — in Setup, connect that year's workbook and save it for " + tripFy +
+            " (or save one planner as 'all years').");
+        } else {
+          ref = wbRef || s.wbRef; // legacy single-planner setup
+          tableName = s.tableName;
+        }
+        var headers = await GraphData.tableHeaders(token, ref, tableName);
+        await GraphData.addTableRow(token, ref, tableName, TravelForm.plannerRow(headers, m, orgOpts));
+        done.push("row added to " + (picked && picked.key !== "*" ? picked.key + " planner (" : "") +
+          (ref.name || "the planner") + (picked && picked.key !== "*" ? ")" : ""));
       }
 
       saveSettings({ name: m.name, costCenter: m.costCenter, division: m.division, bureau: m.bureau });

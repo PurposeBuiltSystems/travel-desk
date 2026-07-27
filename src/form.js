@@ -186,7 +186,20 @@
     ].join("\n");
   }
 
+  /**
+   * Choose the planner for a trip's fiscal year. planners is a map like
+   * {"SFY27": {...}, "SFY26": {...}, "*": {...}} — exact FY match first,
+   * then the "*" catch-all. Returns {key, planner} or null.
+   */
+  function pickPlanner(planners, fyLabel) {
+    var p = planners || {};
+    if (fyLabel && p[fyLabel]) { return { key: fyLabel, planner: p[fyLabel] }; }
+    if (p["*"]) { return { key: "*", planner: p["*"] }; }
+    return null;
+  }
+
   var api = {
+    pickPlanner: pickPlanner,
     computeTotals: computeTotals,
     subjectLine: subjectLine,
     fiscalLabel: fiscalLabel,

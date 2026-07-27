@@ -28,6 +28,11 @@
     <label>Planner table
       <select id="tableName"></select>
     </label>
+    <label>This planner covers fiscal year
+      <input id="wbFy" type="text" placeholder="e.g. SFY27 — leave blank to use it for every year" />
+    </label>
+    <button id="savePlanner">Save planner for this year</button>
+    <div id="plannerList" class="hint"></div>
     <label>Coordinator email
       <input id="coordEmail" type="text" placeholder="travel.coordinator@yourorg.com" />
     </label>
@@ -176,8 +181,8 @@
 
   <section id="status" class="status" hidden></section>
 
-  <script src="../form.js?v=4"></script>
-  <script src="../graph.js?v=4"></script>
-  <script src="taskpane.js?v=4"></script>
+  <script src="../form.js?v=5"></script>
+  <script src="../graph.js?v=5"></script>
+  <script src="taskpane.js?v=5"></script>
 </body>
 </html>

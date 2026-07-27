@@ -117,6 +117,18 @@ check("html funding label", html.indexOf("TEWD") !== -1, true);
 var noOrg = F.formHtml(model, {});
 check("html works with no org", noOrg.indexOf("Travel Authorization Request") !== -1, true);
 
+// 10. Fiscal-year planner routing
+var PLANNERS = {
+  "SFY27": { tableName: "T27", wbRef: { name: "Planner 2027" } },
+  "SFY26": { tableName: "T26", wbRef: { name: "Planner 2026" } },
+  "*": { tableName: "TAll", wbRef: { name: "Catch-all" } },
+};
+check("fy exact match", F.pickPlanner(PLANNERS, "SFY27").planner.tableName, "T27");
+check("fy other year", F.pickPlanner(PLANNERS, "SFY26").key, "SFY26");
+check("fy fallback to catch-all", F.pickPlanner(PLANNERS, "SFY28").key, "*");
+check("no planners -> null", F.pickPlanner({}, "SFY27"), null);
+check("no match no catch-all -> null", F.pickPlanner({ "SFY26": PLANNERS["SFY26"] }, "SFY28"), null);
+
 if (failures) {
   console.error("\n" + failures + " form test(s) FAILED");
   process.exit(1);

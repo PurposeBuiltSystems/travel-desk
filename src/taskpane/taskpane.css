@@ -46,3 +46,11 @@ button:disabled { opacity: .55; cursor: default; }
 .status.info  { background: #e7f2e9; color: #0e5c2f; }
 .status.work  { background: #eff6fc; color: #0f548c; }
 .status.error { background: #fdf3f4; color: #a4262c; }
+
+/* narrow-pane fluidity (Outlook default pane ~320px) */
+html, body { max-width: 100%; overflow-x: hidden; }
+input, select, textarea, button { max-width: 100%; box-sizing: border-box; }
+.row2 { flex-wrap: wrap; }
+.row2 label { flex: 1 1 130px; min-width: 0; }
+.modes { flex-wrap: wrap; }
+.meals input { max-width: 52px; }

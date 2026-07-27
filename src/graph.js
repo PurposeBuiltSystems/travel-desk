@@ -139,6 +139,20 @@
     return xlsxOnly(res.value);
   }
 
+  /** Inbox messages from booking senders (e.g. Concur) since a date. */
+  async function bookingEmails(token, sinceIso, senderDomains) {
+    var filt = "receivedDateTime ge " + sinceIso;
+    var res = await graphJson(token, "GET", "/me/mailFolders/inbox/messages?$filter=" +
+      encodeURIComponent(filt) +
+      "&$select=id,subject,bodyPreview,from,receivedDateTime,webLink&$orderby=receivedDateTime desc&$top=100");
+    var domains = (senderDomains || []).map(function (d) { return String(d).toLowerCase().trim(); }).filter(Boolean);
+    return (res.value || []).filter(function (m) {
+      var a = ((m.from || {}).emailAddress || {}).address || "";
+      var al = a.toLowerCase();
+      return domains.some(function (d) { return al.indexOf(d) !== -1; });
+    });
+  }
+
   // ---------- mail ----------
 
   /** Create the Travel Authorization email as a DRAFT (never sent). */
@@ -160,6 +174,7 @@
     tableHeaders: tableHeaders,
     addTableRow: addTableRow,
     createDraft: createDraft,
+    bookingEmails: bookingEmails,
     _config: { clientId: CLIENT_ID },
   };
 })(typeof self !== "undefined" ? self : this);

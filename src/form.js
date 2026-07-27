@@ -198,8 +198,37 @@
     return null;
   }
 
+  /**
+   * Match booking-confirmation emails (already filtered to booking senders,
+   * e.g. Concur) to a trip. A candidate must arrive after the request and
+   * before the trip ends; it's a CONFIDENT match when the subject/preview
+   * mentions the destination city or the event name.
+   * Returns {confident: email|null, candidates: [...]}.
+   */
+  function matchBooking(trip, emails) {
+    var reqT = Date.parse(trip.createdAt || "") || 0;
+    var endT = Date.parse(trip.returnDate || trip.eventStart || "") || (reqT + 90 * 864e5);
+    endT += 864e5; // through the end of the return day
+    var city = String(trip.location || "").split(",")[0].trim().toLowerCase();
+    var eventTok = String(trip.event || "").toLowerCase();
+    var candidates = (emails || []).filter(function (e) {
+      var t = Date.parse(e.receivedDateTime || "") || 0;
+      return t >= reqT && t <= endT;
+    });
+    var confident = candidates.filter(function (e) {
+      var hay = ((e.subject || "") + " " + (e.bodyPreview || "")).toLowerCase();
+      return (city && city.length >= 3 && hay.indexOf(city) !== -1) ||
+             (eventTok && eventTok.length >= 6 && hay.indexOf(eventTok) !== -1);
+    });
+    return {
+      confident: confident.length === 1 ? confident[0] : null,
+      candidates: candidates,
+    };
+  }
+
   var api = {
     pickPlanner: pickPlanner,
+    matchBooking: matchBooking,
     computeTotals: computeTotals,
     subjectLine: subjectLine,
     fiscalLabel: fiscalLabel,

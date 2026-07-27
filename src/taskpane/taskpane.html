@@ -40,6 +40,9 @@
     </label>
     <button id="savePlanner">Save planner for this year</button>
     <div id="plannerList" class="hint"></div>
+    <label>Booking confirmation senders (for trip follow-up)
+      <input id="bookingSenders" type="text" value="concursolutions.com, concur.com" />
+    </label>
     <label>Coordinator email
       <input id="coordEmail" type="text" placeholder="travel.coordinator@yourorg.com" />
     </label>
@@ -186,10 +189,18 @@
     </div>
   </section>
 
+  <section id="trips" class="options" style="margin-top:14px">
+    <details open>
+      <summary>\u2708\ufe0f My trips</summary>
+      <button id="checkBookings">Check for booking emails</button>
+      <div id="tripsList" class="hint">No requests tracked yet \u2014 submit one and it appears here.</div>
+    </details>
+  </section>
+
   <section id="status" class="status" hidden></section>
 
-  <script src="../form.js?v=6"></script>
-  <script src="../graph.js?v=6"></script>
-  <script src="taskpane.js?v=6"></script>
+  <script src="../form.js?v=7"></script>
+  <script src="../graph.js?v=7"></script>
+  <script src="taskpane.js?v=7"></script>
 </body>
 </html>

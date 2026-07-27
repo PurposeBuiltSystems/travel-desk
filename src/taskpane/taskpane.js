@@ -37,7 +37,7 @@
   }
 
   // Settings fields that mirror a Setup input 1:1 (id === settings key).
-  var ORG_FIELDS = ["coordEmail", "orgName", "fyStartMonth", "fyPrefix", "fundingLabel"];
+  var ORG_FIELDS = ["coordEmail", "orgName", "fyStartMonth", "fyPrefix", "fundingLabel", "bookingSenders"];
   // What an org profile carries (coordinator → travelers). wbUrl/table ride
   // along so one Apply fully configures a traveler.
   var PROFILE_FIELDS = ORG_FIELDS.concat(["wbUrl", "tableName", "fundingOptions", "planners"]);
@@ -83,6 +83,8 @@
       if (ev.key === "Enter") { ev.preventDefault(); browseWorkbooks(); }
     });
     byId("wbPick").addEventListener("change", pickWorkbook);
+    byId("checkBookings").addEventListener("click", checkBookings);
+    renderTrips();
     byId("savePlanner").addEventListener("click", savePlanner);
     byId("plannerList").addEventListener("click", function (ev) {
       var k = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-del");
@@ -197,6 +199,94 @@
     byId("grandTotal").textContent = "$" +
       TravelForm.computeTotals(model()).grand.toLocaleString("en-US",
         { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  var TRIPS_KEY = "traveldesk.trips";
+
+  function trips() {
+    try { return JSON.parse(Office.context.roamingSettings.get(TRIPS_KEY) || "[]"); }
+    catch (e) { return []; }
+  }
+
+  function saveTrips(list) {
+    try {
+      Office.context.roamingSettings.set(TRIPS_KEY, JSON.stringify(list.slice(-40)));
+      Office.context.roamingSettings.saveAsync(function () {});
+    } catch (e) { /* best-effort */ }
+  }
+
+  function addTrip(m) {
+    var list = trips();
+    list.push({
+      id: "t" + list.length + "-" + (m.event || "").slice(0, 12).replace(/\W/g, ""),
+      name: m.name, event: m.event, location: m.location,
+      eventStart: m.eventStart, departDate: m.departDate, returnDate: m.returnDate,
+      createdAt: new Date().toISOString(),
+      status: "requested", bookingLink: "", bookingSubject: "",
+    });
+    saveTrips(list);
+    renderTrips();
+  }
+
+  function renderTrips() {
+    var el = byId("tripsList");
+    var list = trips();
+    if (!list.length) { el.innerHTML = "No requests tracked yet \u2014 submit one and it appears here."; return; }
+    el.innerHTML = list.slice().reverse().map(function (t, ri) {
+      var i = list.length - 1 - ri;
+      var chip = t.status === "booked"
+        ? '<span style="color:#0e5c2f;font-weight:700">\u2713 Booked</span>'
+        : (t.departDate && Date.parse(t.departDate) - Date.now() < 14 * 864e5
+            ? '<span style="color:#a4262c;font-weight:700">\u23f3 Requested \u2014 no booking email yet</span>'
+            : '<span style="color:#8a6d00;font-weight:700">\u23f3 Requested</span>');
+      return "<div style=\"border-top:1px solid #eee;padding:6px 0\"><b>" + (t.event || "trip") + "</b> \u00b7 " +
+        (t.eventStart || t.departDate || "") + " \u00b7 " + chip +
+        (t.bookingLink ? ' \u00b7 <a href="' + t.bookingLink + '" target="_blank" rel="noopener">open booking email</a>' : "") +
+        (t.status !== "booked" ? ' \u00b7 <button type="button" class="chip-del" data-book="' + i + '">mark booked</button>' : "") +
+        "</div>";
+    }).join("");
+    el.querySelectorAll("[data-book]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var list2 = trips();
+        list2[Number(b.getAttribute("data-book"))].status = "booked";
+        saveTrips(list2);
+        renderTrips();
+      });
+    });
+  }
+
+  async function checkBookings() {
+    byId("checkBookings").disabled = true;
+    try {
+      var list = trips();
+      var open = list.filter(function (t) { return t.status !== "booked"; });
+      if (!open.length) { setStatus("info", "No trips waiting on bookings. \u2708\ufe0f"); return; }
+      setStatus("work", "Checking your inbox for booking confirmations\u2026");
+      var token = await GraphData.getToken();
+      var since = open.reduce(function (min, t) { return t.createdAt < min ? t.createdAt : min; }, open[0].createdAt);
+      var senders = (byId("bookingSenders").value || "concursolutions.com").split(",");
+      var emails = await GraphData.bookingEmails(token, since, senders);
+      var booked = 0, unsure = 0;
+      open.forEach(function (t) {
+        var m = TravelForm.matchBooking(t, emails);
+        if (m.confident) {
+          t.status = "booked";
+          t.bookingLink = m.confident.webLink || "";
+          t.bookingSubject = m.confident.subject || "";
+          booked++;
+        } else if (m.candidates.length) { unsure++; }
+      });
+      saveTrips(list);
+      renderTrips();
+      setStatus(booked || !unsure ? "info" : "error",
+        booked + " trip(s) matched to booking emails" +
+        (unsure ? " \u00b7 " + unsure + " trip(s) have possible matches \u2014 check your inbox and use \u201cmark booked\u201d" : "") +
+        (!booked && !unsure ? " \u2014 none found yet. Booking emails usually take a few days after the request." : "") + ".");
+    } catch (e) {
+      setStatus("error", "Booking check failed: " + ((e && e.message) || e));
+    } finally {
+      byId("checkBookings").disabled = false;
+    }
   }
 
   var pickerRefs = [];
@@ -419,6 +509,7 @@
       }
 
       saveSettings({ name: m.name, costCenter: m.costCenter, division: m.division, bureau: m.bureau });
+      addTrip(m);
       setStatus("info", "Done: " + done.join(" + ") + ".");
     } catch (e) {
       setStatus("error", "Travel request failed: " + ((e && e.message) || e) +

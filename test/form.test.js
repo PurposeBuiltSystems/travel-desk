@@ -129,6 +129,24 @@ check("fy fallback to catch-all", F.pickPlanner(PLANNERS, "SFY28").key, "*");
 check("no planners -> null", F.pickPlanner({}, "SFY27"), null);
 check("no match no catch-all -> null", F.pickPlanner({ "SFY26": PLANNERS["SFY26"] }, "SFY28"), null);
 
+// 11. Booking-email matching (Concur follow-up)
+var trip = { event: "TRB Annual Meeting", location: "Washington, DC",
+  createdAt: "2026-07-01T10:00:00Z", eventStart: "2027-01-10", returnDate: "2027-01-15" };
+var mails = [
+  { subject: "Your trip to Washington", bodyPreview: "Flight DSM-DCA Jan 9", receivedDateTime: "2026-07-20T09:00:00Z", webLink: "w1" },
+  { subject: "Your trip to Denver", bodyPreview: "Flight DSM-DEN", receivedDateTime: "2026-07-21T09:00:00Z", webLink: "w2" },
+  { subject: "Old itinerary", bodyPreview: "Washington", receivedDateTime: "2026-06-01T09:00:00Z", webLink: "w3" },
+];
+var mb = F.matchBooking(trip, mails);
+check("confident match by city", mb.confident && mb.confident.webLink, "w1");
+check("pre-request email excluded", mb.candidates.some(function (e) { return e.webLink === "w3"; }), false);
+
+// ambiguous: two Washington emails in window -> no auto match, both candidates
+var mails2 = mails.concat([{ subject: "Updated trip to Washington", bodyPreview: "", receivedDateTime: "2026-07-22T09:00:00Z", webLink: "w4" }]);
+var mb2 = F.matchBooking(trip, mails2);
+check("ambiguous -> no confident", mb2.confident, null);
+check("candidates in window", mb2.candidates.length, 3);
+
 if (failures) {
   console.error("\n" + failures + " form test(s) FAILED");
   process.exit(1);

@@ -84,6 +84,14 @@
     });
     byId("wbPick").addEventListener("change", pickWorkbook);
     byId("checkBookings").addEventListener("click", checkBookings);
+    byId("profileApplyFast").addEventListener("click", function () {
+      byId("profileBlob").value = byId("profileBlobFast").value;
+      profileApply();
+      byId("profileBlobFast").value = "";
+    });
+    // returning users: lead with their trips; first-timers see the form
+    var tripsEl = byId("trips").querySelector("details");
+    if (trips().length === 0 && tripsEl) { tripsEl.removeAttribute("open"); }
     renderTrips();
     byId("savePlanner").addEventListener("click", savePlanner);
     byId("plannerList").addEventListener("click", function (ev) {
@@ -123,6 +131,17 @@
      "cLodgingRate", "cRegistration", "cAdditional"].forEach(function (id) {
       byId(id).addEventListener("input", refreshTotal);
     });
+    ["eventStart", "departDate"].forEach(function (id) {
+      byId(id).addEventListener("change", refreshFyLine);
+    });
+    byId("eventStart").addEventListener("change", function () {
+      // prefill the free-text conference dates from the event start
+      if (!byId("confDates").value.trim() && byId("eventStart").value) {
+        var d = new Date(byId("eventStart").value + "T00:00:00");
+        byId("confDates").value = d.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
+      }
+    });
+    refreshFyLine();
   });
 
   // ---------- org profile (share setup with the team) ----------
@@ -193,6 +212,27 @@
     renderPlannerList();
     setStatus("info", (key === "*" ? "Saved as the catch-all planner." :
       "Saved as the " + key + " planner \u2014 trips dated in " + key + " will go there automatically."));
+  }
+
+  function refreshFyLine() {
+    var el = byId("fyLine");
+    if (!el) { return; }
+    var st = settings();
+    var date = byId("eventStart").value || byId("departDate").value;
+    if (!date) { el.textContent = ""; return; }
+    var fy = TravelForm.fiscalLabel(date, st.fyStartMonth, st.fyPrefix);
+    var picked = TravelForm.pickPlanner(st.planners, fy);
+    if (picked) {
+      el.innerHTML = "Files to: <b>" + (picked.key === "*" ? "your planner" : picked.key + " planner") + "</b> (" +
+        ((picked.planner.wbRef && picked.planner.wbRef.name) || "workbook") + ") \u2713";
+      el.className = "hint fy-ok";
+    } else if (st.planners && Object.keys(st.planners).length) {
+      el.innerHTML = "\u26a0 No planner saved for <b>" + fy + "</b> \u2014 connect that year's workbook in Setup before submitting.";
+      el.className = "hint fy-warn";
+    } else if (st.wbRef) {
+      el.innerHTML = "Files to: <b>" + (st.wbRef.name || "your planner") + "</b> \u2713";
+      el.className = "hint fy-ok";
+    } else { el.textContent = ""; }
   }
 
   function refreshTotal() {
@@ -481,9 +521,18 @@
 
       if (doDraft) {
         setStatus("work", "Creating the Travel Authorization draft…");
-        await GraphData.createDraft(token, byId("coordEmail").value.trim(),
+        var draft = await GraphData.createDraft(token, byId("coordEmail").value.trim(),
           TravelForm.subjectLine(m), TravelForm.formHtml(m, orgOpts));
-        done.push("draft in your Drafts folder (review and send)");
+        done.push("draft OPENED for you — review it and press Send");
+        // Open the draft immediately: "draft created" is not "request sent",
+        // and this is the moment the traveler must press Send.
+        try {
+          if (draft && draft.webLink) {
+            Office.context.ui.openBrowserWindow
+              ? Office.context.ui.openBrowserWindow(draft.webLink)
+              : window.open(draft.webLink, "_blank");
+          }
+        } catch (e) { done.push("(open your Drafts folder to send it)"); }
       }
 
       if (doRow) {

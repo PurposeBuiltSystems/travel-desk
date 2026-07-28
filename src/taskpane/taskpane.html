@@ -19,8 +19,23 @@
     <p class="sub">One entry &rarr; the Travel Authorization email and the planner spreadsheet row.</p>
   </header>
 
+  <section id="trips" class="options" style="margin-top:14px">
+    <details open>
+      <summary>\u2708\ufe0f My trips</summary>
+      <button id="checkBookings">Check for booking emails</button>
+      <div id="tripsList" class="hint">No requests tracked yet \u2014 submit one and it appears here.</div>
+    </details>
+  </section>
+
   <details id="setup" class="options">
-    <summary>Setup (once)</summary>
+    <summary>Setup (once) \u2014 travelers: just paste your code</summary>
+    <div class="fastpath">
+      <b>Traveler with a setup code from your coordinator?</b> Paste it here and you're done:
+      <textarea id="profileBlobFast" rows="2" placeholder="Setup code"></textarea>
+      <button id="profileApplyFast" class="primary">Apply my code</button>
+    </div>
+    <details class="options">
+      <summary>Coordinator setup (workbooks, fiscal years, org settings)</summary>
     <label>Pick your planner workbook
       <select id="wbPick"><option value="">Click \u201cShow my files\u201d\u2026</option></select>
     </label>
@@ -73,6 +88,7 @@
         <button id="profileCopy">Copy profile</button>
         <button id="profileApply">Apply profile</button>
       </div>
+    </details>
     </details>
   </details>
 
@@ -182,6 +198,7 @@
 
     <label>Planner comments <input id="comments" type="text" /></label>
 
+    <p id="fyLine" class="hint"></p>
     <div class="actions">
       <label><input id="doDraft" type="checkbox" checked /> Create email draft to coordinator</label>
       <label><input id="doRow" type="checkbox" checked /> Add row to Division planner</label>
@@ -189,18 +206,10 @@
     </div>
   </section>
 
-  <section id="trips" class="options" style="margin-top:14px">
-    <details open>
-      <summary>\u2708\ufe0f My trips</summary>
-      <button id="checkBookings">Check for booking emails</button>
-      <div id="tripsList" class="hint">No requests tracked yet \u2014 submit one and it appears here.</div>
-    </details>
-  </section>
-
   <section id="status" class="status" hidden></section>
 
-  <script src="../form.js?v=7"></script>
-  <script src="../graph.js?v=7"></script>
-  <script src="taskpane.js?v=7"></script>
+  <script src="../form.js?v=8"></script>
+  <script src="../graph.js?v=8"></script>
+  <script src="taskpane.js?v=8"></script>
 </body>
 </html>

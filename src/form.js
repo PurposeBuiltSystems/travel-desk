@@ -227,8 +227,107 @@
     };
   }
 
+  /* ------------------------------------------------------------------
+   * Third-party reimbursement follow-through. The money itself moves in
+   * Workday; the add-in covers everything AROUND that: which receivables
+   * exist, how old they are, the handoff packet finance needs to key the
+   * Workday receivable, and the polite reminder to the third party.
+   * ------------------------------------------------------------------ */
+
+  /**
+   * One receivable per third party on every ENDED trip. Status lives on
+   * trip.reimb[tpIndex] = {status: "open"|"invoiced"|"received",
+   * wdRef, on}. Unresolved sorted oldest-return first; received last.
+   */
+  function receivables(tripsList, now) {
+    var nowT = (now instanceof Date ? now : new Date(now || Date.now())).getTime();
+    var out = [];
+    (tripsList || []).forEach(function (trip) {
+      var tps = trip.thirdParties || [];
+      if (!tps.length) { return; }
+      var endIso = trip.returnDate || trip.eventStart || "";
+      var endT = Date.parse(endIso) || 0;
+      if (!endT || endT > nowT) { return; } // trip not over yet
+      tps.forEach(function (tp, i) {
+        if (!tp || !(tp.name || "").trim()) { return; }
+        var st = (trip.reimb && trip.reimb[i]) || {};
+        out.push({
+          tripId: trip.id, tpIndex: i,
+          entity: tp.name.trim(), contact: tp.contact || "",
+          project: tp.project || "",
+          amount: num(tp.maxReimb) || null,
+          traveler: trip.name || "", event: trip.event || "",
+          location: trip.location || "", returnDate: endIso,
+          ageDays: Math.max(0, Math.floor((nowT - endT) / 864e5)),
+          status: st.status || "open", wdRef: st.wdRef || "", on: st.on || "",
+        });
+      });
+    });
+    out.sort(function (a, b) {
+      var ra = a.status === "received" ? 1 : 0;
+      var rb = b.status === "received" ? 1 : 0;
+      if (ra !== rb) { return ra - rb; }
+      return b.ageDays - a.ageDays;
+    });
+    return out;
+  }
+
+  function moneyRounded(n) { // distinct from money(): whole dollars, TBD-aware
+    return n == null ? "(amount TBD)" :
+      "$" + String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
+
+  /**
+   * Handoff email for finance/AR: everything needed to key the Workday
+   * receivable, plus blank lines for what only Workday knows. The entry
+   * itself stays human — this kills the retyping and the forgetting.
+   */
+  function workdayPacketHtml(r, opts) {
+    opts = opts || {};
+    var row = function (l, v) {
+      return "<tr><td style=\"color:#616161;padding:3px 8px 3px 0;vertical-align:top\">" + esc(l) +
+        "</td><td style=\"font-weight:600;padding:3px 0\">" + esc(v || "\u2014") + "</td></tr>";
+    };
+    return '<div style="font-family:Segoe UI,Arial,sans-serif;max-width:640px;color:#242424">' +
+      "<p>Please set up a third-party travel reimbursement receivable in Workday:</p>" +
+      "<table style=\"border-collapse:collapse\">" +
+      row("Third party", r.entity) +
+      row("Billing contact", r.contact) +
+      row("Project / agreement #", r.project) +
+      row("Expected amount", moneyRounded(r.amount)) +
+      row("Traveler", r.traveler) +
+      row("Trip", r.event + (r.location ? " \u2014 " + r.location : "")) +
+      row("Trip ended", (r.returnDate || "").slice(0, 10)) +
+      (opts.funding ? row(opts.fundingLabel || "Funding", opts.funding) : "") +
+      (opts.costCenter ? row("Cost center", opts.costCenter) : "") +
+      "</table>" +
+      "<p style=\"margin-top:14px\">For Workday (please reply with these once created):</p>" +
+      "<p>Workday receivable #: ______________<br>" +
+      "Cost center / fund to credit: ______________</p>" +
+      "<p style=\"color:#616161;font-size:12px\">Sent from Travel Desk \u2014 details as captured on the travel authorization.</p>" +
+      "</div>";
+  }
+
+  /** Polite follow-up to the third party itself. */
+  function reminderHtml(r, opts) {
+    opts = opts || {};
+    return '<div style="font-family:Segoe UI,Arial,sans-serif;max-width:640px;color:#242424">' +
+      "<p>Hello" + (r.contact ? "" : " " + esc(r.entity)) + ",</p>" +
+      "<p>Following up on the agreed travel reimbursement of <strong>" + moneyRounded(r.amount) +
+      "</strong> for <strong>" + esc(r.traveler) + "</strong>'s attendance at <strong>" +
+      esc(r.event) + "</strong>" + (r.location ? " (" + esc(r.location) + ")" : "") +
+      ", which concluded on " + esc((r.returnDate || "").slice(0, 10)) + "." +
+      (r.project ? " Reference: " + esc(r.project) + "." : "") + "</p>" +
+      "<p>Could you let us know the status of the payment, or where to direct an invoice if one is needed?</p>" +
+      "<p>Thank you!" + (opts.orgName ? "<br>" + esc(opts.orgName) : "") + "</p>" +
+      "</div>";
+  }
+
   var api = {
     pickPlanner: pickPlanner,
+    receivables: receivables,
+    workdayPacketHtml: workdayPacketHtml,
+    reminderHtml: reminderHtml,
     matchBooking: matchBooking,
     computeTotals: computeTotals,
     subjectLine: subjectLine,

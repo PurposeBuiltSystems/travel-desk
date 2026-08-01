@@ -27,6 +27,14 @@
     </details>
   </section>
 
+  <section id="reimb" class="options" style="margin-top:8px">
+    <details>
+      <summary>💵 Third-party reimbursements owed</summary>
+      <p class="hint">The money moves in Workday — this tracks everything around it: what's owed after each trip, the packet finance needs to key the receivable, and the reminder to the third party. Statuses live in your account.</p>
+      <div id="reimbList" class="hint">No third-party reimbursements to chase.</div>
+    </details>
+  </section>
+
   <details id="setup" class="options">
     <summary>Setup (once) \u2014 travelers: just paste your code</summary>
     <div class="fastpath">
@@ -60,6 +68,9 @@
     </label>
     <label>Coordinator email
       <input id="coordEmail" type="text" placeholder="travel.coordinator@yourorg.com" />
+    </label>
+    <label>Finance / AR contact (Workday receivable packets; blank = coordinator)
+      <input id="arEmail" type="text" placeholder="accounts.receivable@yourorg.com" />
     </label>
     <label>Organization name (on the generated form)
       <input id="orgName" type="text" placeholder="Acme County Public Works" />
@@ -167,6 +178,7 @@
     <details id="tp1" class="options">
       <summary>Third-party reimbursement #1</summary>
       <label>Entity name <input id="tp1Name" type="text" /></label>
+      <label>Billing contact email (for reimbursement follow-up) <input id="tp1Contact" type="text" /></label>
       <label>Project number <input id="tp1Project" type="text" /></label>
       <label>Max reimbursement $ <input id="tp1Max" type="number" min="0" step="0.01" /></label>
       <label><input id="tp1Packet" type="checkbox" /> 3rd-party packet to attach</label>
@@ -183,6 +195,7 @@
     <details id="tp2" class="options">
       <summary>Third-party reimbursement #2</summary>
       <label>Entity name <input id="tp2Name" type="text" /></label>
+      <label>Billing contact email (for reimbursement follow-up) <input id="tp2Contact" type="text" /></label>
       <label>Project number <input id="tp2Project" type="text" /></label>
       <label>Max reimbursement $ <input id="tp2Max" type="number" min="0" step="0.01" /></label>
       <label><input id="tp2Packet" type="checkbox" /> 3rd-party packet to attach</label>
@@ -208,8 +221,8 @@
 
   <section id="status" class="status" hidden></section>
 
-  <script src="../form.js?v=8"></script>
-  <script src="../graph.js?v=8"></script>
-  <script src="taskpane.js?v=8"></script>
+  <script src="../form.js?v=9"></script>
+  <script src="../graph.js?v=9"></script>
+  <script src="taskpane.js?v=9"></script>
 </body>
 </html>

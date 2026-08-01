@@ -152,6 +152,39 @@ var stRow = F.plannerRow(["Event Name", "Status", "COO approved"], model, { fySt
 check("status column requested", stRow[1], "Requested");
 check("approval column still blank", stRow[2], "");
 
+
+/* ------------------------------------------- third-party receivables */
+
+var NOWR = new Date("2026-08-01T12:00:00Z");
+var tripsR = [
+  { id: "t1", name: "Ann Lee", event: "TRB Annual", location: "Washington, DC",
+    returnDate: "2026-06-15", thirdParties: [
+      { name: "AASHTO", contact: "billing@aashto.org", project: "AG-42", maxReimb: "840" },
+      { name: "FHWA Grant", contact: "", project: "", maxReimb: "" }],
+    reimb: { 1: { status: "received", on: "2026-07-01" } } },
+  { id: "t2", name: "Bob Ray", event: "Future Conf", location: "Denver, CO",
+    returnDate: "2026-12-01", thirdParties: [{ name: "Org", maxReimb: "100" }] },
+  { id: "t3", name: "Sue Kim", event: "No 3rd party trip", returnDate: "2026-05-01", thirdParties: [] },
+];
+var recv = F.receivables(tripsR, NOWR);
+check("future trip + no-tp trip excluded", recv.length, 2);
+check("open receivable first", recv[0].entity, "AASHTO");
+check("age computed from return", recv[0].ageDays, 47);
+check("amount parsed", recv[0].amount, 840);
+check("blank amount -> null", recv[1].amount, null);
+check("received status carried", recv[1].status, "received");
+
+var packet = F.workdayPacketHtml(recv[0], { funding: "TEWD", fundingLabel: "TEWD", costCenter: "CC-77" });
+check("packet names the entity", packet.indexOf("AASHTO") !== -1, true);
+check("packet shows expected amount", packet.indexOf("$840") !== -1, true);
+check("packet has blank WD receivable line", packet.indexOf("Workday receivable #: ______") !== -1, true);
+check("packet carries funding + cost center", packet.indexOf("TEWD") !== -1 && packet.indexOf("CC-77") !== -1, true);
+
+var rem = F.reminderHtml(recv[0], { orgName: "Iowa DOT" });
+check("reminder states amount + event", rem.indexOf("$840") !== -1 && rem.indexOf("TRB Annual") !== -1, true);
+check("reminder references project", rem.indexOf("AG-42") !== -1, true);
+check("reminder signs org", rem.indexOf("Iowa DOT") !== -1, true);
+
 if (failures) {
   console.error("\n" + failures + " form test(s) FAILED");
   process.exit(1);

@@ -33,6 +33,13 @@ paste the code and click **Apply** — fully set up in one step. Iowa DOT is
 simply one profile; any org that tracks travel in a shared spreadsheet and
 emails authorization forms can use its own.
 
+## Analytics
+
+The planner is an Excel table on SharePoint — Power BI's native food.
+[POWERBI.md](POWERBI.md) is the one-hour build recipe: budget burn per
+division, the coordinator's follow-up queue, a destination map, and
+net-cost-after-reimbursement measures.
+
 ## Deployment
 
 Internal / pilot tool — not on AppSource. Sideload via aka.ms/olksideload with

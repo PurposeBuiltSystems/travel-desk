@@ -109,7 +109,10 @@
     });
     if (!byId("wbFy").value) {
       var today = new Date();
-      var iso = today.getFullYear() + "-" + (today.getMonth() + 1) + "-" + today.getDate();
+      var p2 = function (n) { return (n < 10 ? "0" : "") + n; };
+      // MUST be zero-padded: "2026-8-2" is an Invalid Date, which silently
+      // blanked the fiscal year and saved the planner as the catch-all.
+      var iso = today.getFullYear() + "-" + p2(today.getMonth() + 1) + "-" + p2(today.getDate());
       byId("wbFy").value = TravelForm.fiscalLabel(iso, s.fyStartMonth, s.fyPrefix) || "";
     }
     renderPlannerList();
@@ -261,7 +264,9 @@
   function addTrip(m) {
     var list = trips();
     list.push({
-      id: "t" + list.length + "-" + (m.event || "").slice(0, 12).replace(/\W/g, ""),
+      // unique for the life of the mailbox: list.length repeats forever once
+      // the 40-trip cap kicks in, which collided for recurring events
+      id: "t" + Date.now().toString(36) + "-" + (m.event || "").slice(0, 8).replace(/\W/g, ""),
       name: m.name, event: m.event, location: m.location,
       eventStart: m.eventStart, departDate: m.departDate, returnDate: m.returnDate,
       createdAt: new Date().toISOString(),
@@ -327,12 +332,13 @@
 
   function updateReimb(tripId, tpIndex, patch) {
     var list = trips();
-    list.forEach(function (t) {
-      if (t.id !== tripId) { return; }
+    list.some(function (t) {
+      if (t.id !== tripId) { return false; }
       t.reimb = t.reimb || {};
       var st = t.reimb[tpIndex] || {};
       Object.keys(patch).forEach(function (k) { st[k] = patch[k]; });
       t.reimb[tpIndex] = st;
+      return true; // ids are unique — never touch a second trip
     });
     saveTrips(list);
     renderReimb();
@@ -384,16 +390,16 @@
     el.innerHTML = "";
     list.forEach(function (r) {
       var box = document.createElement("div");
-      box.style.cssText = "border:1px solid #e1dfdd;border-radius:8px;padding:8px 10px;margin-bottom:8px" +
+      box.style.cssText = "border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px" +
         (r.status === "received" ? ";opacity:0.55" : "");
       var head = document.createElement("div");
       var amt = r.amount == null ? "amount TBD" : "$" + String(Math.round(r.amount)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      var stateText = r.status === "received" ? "\u2713 received " + r.on :
+        r.status === "invoiced" ? "invoiced" + (r.wdRef ? " (WD " + r.wdRef + ")" : "") + " \u00b7 " + r.ageDays + "d" :
+        r.ageDays + "d";
       head.innerHTML = "<strong>" + esc(r.entity) + "</strong> owes " + esc(amt) +
-        " — " + esc(r.traveler) + ", " + esc(r.event) +
-        " <span style=\"color:#b25000;font-weight:700\">" +
-        (r.status === "received" ? "✓ received " + esc(r.on) :
-         r.status === "invoiced" ? "invoiced" + (r.wdRef ? " (WD " + esc(r.wdRef) + ")" : "") + " · " + r.ageDays + "d" :
-         r.ageDays + "d</span>");
+        " \u2014 " + esc(r.traveler) + ", " + esc(r.event) +
+        " <span style=\"color:var(--warn-fg);font-weight:700\">" + esc(stateText) + "</span>";
       box.appendChild(head);
       var row = document.createElement("div");
       row.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-top:6px";
@@ -429,12 +435,16 @@
     if (!list.length) { el.innerHTML = "No requests tracked yet \u2014 submit one and it appears here."; return; }
     el.innerHTML = list.slice().reverse().map(function (t, ri) {
       var i = list.length - 1 - ri;
+      // "departing soon" = still ahead of us AND inside 14 days; the old
+      // test was also true for every trip already in the past, so finished
+      // trips stayed flagged red forever.
+      var untilDepart = t.departDate ? Date.parse(t.departDate + "T23:59:59") - Date.now() : null;
       var chip = t.status === "booked"
-        ? '<span style="color:#0e5c2f;font-weight:700">\u2713 Booked</span>'
-        : (t.departDate && Date.parse(t.departDate) - Date.now() < 14 * 864e5
-            ? '<span style="color:#a4262c;font-weight:700">\u23f3 Requested \u2014 no booking email yet</span>'
-            : '<span style="color:#8a6d00;font-weight:700">\u23f3 Requested</span>');
-      return "<div style=\"border-top:1px solid #eee;padding:6px 0\"><b>" + (t.event || "trip") + "</b> \u00b7 " +
+        ? '<span style="color:var(--ok-fg);font-weight:700">\u2713 Booked</span>'
+        : (untilDepart !== null && untilDepart > 0 && untilDepart < 14 * 864e5
+            ? '<span style="color:var(--err-fg);font-weight:700">\u23f3 Requested \u2014 no booking email yet</span>'
+            : '<span style="color:var(--warn-fg);font-weight:700">\u23f3 Requested</span>');
+      return "<div style=\"border-top:1px solid var(--line);padding:6px 0\"><b>" + (t.event || "trip") + "</b> \u00b7 " +
         (t.eventStart || t.departDate || "") + " \u00b7 " + chip +
         (t.bookingLink ? ' \u00b7 <a href="' + t.bookingLink + '" target="_blank" rel="noopener">open booking email</a>' : "") +
         (t.status !== "booked" ? ' \u00b7 <button type="button" class="chip-del" data-book="' + i + '">mark booked</button>' : "") +

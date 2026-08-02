@@ -105,8 +105,12 @@
       if ((k.indexOf("attendee") !== -1 || k.indexOf("traveler") !== -1 || k.indexOf("name") !== -1) && k.indexOf("role") === -1) { return model.name || ""; }
       if (k.indexOf("role") !== -1) { return model.attendeeRole || ""; }
       if (k.indexOf("cost") !== -1 || k.indexOf("estimate") !== -1) { return totals.grand ? String(Math.round(totals.grand)) : ""; }
-      if (k.indexOf("third") !== -1 || k.indexOf("grant") !== -1) { return thirdPartySummary(model); }
+      // "% Reimbursed" must be tested BEFORE the third-party names below,
+      // or the shared word "reimburs" steals the percentage column.
       if (k.indexOf("%") !== -1) { return reimbursePct(model); }
+      // real planners spell it "3rd Party" as often as "Third party"
+      if (k.indexOf("third") !== -1 || k.indexOf("3rd") !== -1 ||
+          k.indexOf("grant") !== -1 || k.indexOf("reimburs") !== -1) { return thirdPartySummary(model); }
       if (k.indexOf("fiscal") !== -1) { return fy; }
       if (k.indexOf("tewd") !== -1 || k.indexOf("funding") !== -1 || k.indexOf("program") !== -1) { return funding; }
       if (k.indexOf("comment") !== -1 || k.indexOf("note") !== -1) { return model.comments || ""; }
@@ -239,6 +243,15 @@
    * trip.reimb[tpIndex] = {status: "open"|"invoiced"|"received",
    * wdRef, on}. Unresolved sorted oldest-return first; received last.
    */
+  /** Date-only strings parse as UTC midnight, which makes a trip look
+   *  "ended" hours early (and skews ageDays) west of Greenwich. Treat a
+   *  bare YYYY-MM-DD as the END of that day, locally. */
+  function endOfLocalDay(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || "").trim());
+    if (m) { return new Date(+m[1], +m[2] - 1, +m[3], 23, 59, 59).getTime(); }
+    return Date.parse(iso) || 0;
+  }
+
   function receivables(tripsList, now) {
     var nowT = (now instanceof Date ? now : new Date(now || Date.now())).getTime();
     var out = [];
@@ -246,7 +259,7 @@
       var tps = trip.thirdParties || [];
       if (!tps.length) { return; }
       var endIso = trip.returnDate || trip.eventStart || "";
-      var endT = Date.parse(endIso) || 0;
+      var endT = endOfLocalDay(endIso);
       if (!endT || endT > nowT) { return; } // trip not over yet
       tps.forEach(function (tp, i) {
         if (!tp || !(tp.name || "").trim()) { return; }
@@ -255,7 +268,8 @@
           tripId: trip.id, tpIndex: i,
           entity: tp.name.trim(), contact: tp.contact || "",
           project: tp.project || "",
-          amount: num(tp.maxReimb) || null,
+          // a genuine 0 is an answer; only a blank is unknown
+          amount: (tp.maxReimb === "" || tp.maxReimb == null) ? null : num(tp.maxReimb),
           traveler: trip.name || "", event: trip.event || "",
           location: trip.location || "", returnDate: endIso,
           ageDays: Math.max(0, Math.floor((nowT - endT) / 864e5)),

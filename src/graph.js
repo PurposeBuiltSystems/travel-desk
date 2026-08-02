@@ -157,11 +157,16 @@
 
   /** Create the Travel Authorization email as a DRAFT (never sent). */
   async function createDraft(token, to, subject, html) {
-    return graphJson(token, "POST", "/me/messages", {
+    var body = {
       subject: subject,
       body: { contentType: "HTML", content: html },
-      toRecipients: [{ emailAddress: { address: to } }],
-    });
+    };
+    // An empty address is rejected outright (400 ErrorInvalidRecipients).
+    // A third party with no billing contact on file, or a blank coordinator
+    // address, should still get a draft — the user just fills the To line.
+    var addr = String(to || "").trim();
+    if (addr) { body.toRecipients = [{ emailAddress: { address: addr } }]; }
+    return graphJson(token, "POST", "/me/messages", body);
   }
 
   root.GraphData = {

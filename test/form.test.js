@@ -169,7 +169,7 @@ var tripsR = [
 var recv = F.receivables(tripsR, NOWR);
 check("future trip + no-tp trip excluded", recv.length, 2);
 check("open receivable first", recv[0].entity, "AASHTO");
-check("age computed from return", recv[0].ageDays, 47);
+check("age counts from the end of the return day, local", recv[0].ageDays, 46);
 check("amount parsed", recv[0].amount, 840);
 check("blank amount -> null", recv[1].amount, null);
 check("received status carried", recv[1].status, "received");
@@ -184,6 +184,38 @@ var rem = F.reminderHtml(recv[0], { orgName: "Iowa DOT" });
 check("reminder states amount + event", rem.indexOf("$840") !== -1 && rem.indexOf("TRB Annual") !== -1, true);
 check("reminder references project", rem.indexOf("AG-42") !== -1, true);
 check("reminder signs org", rem.indexOf("Iowa DOT") !== -1, true);
+
+/* --- regressions found in the 2026-08-02 bug sweep --- */
+
+// planners spell it "3rd Party" as often as "Third party"
+check("3rd Party header populated",
+  F.plannerRow(["3rd Party"], { thirdParties: [{ name: "AASHTO" }] }, {})[0], "Yes - AASHTO");
+check("Reimbursed-by header populated",
+  F.plannerRow(["Reimbursed by"], { thirdParties: [{ name: "AASHTO" }] }, {})[0], "Yes - AASHTO");
+check("% Reimbursed still gets the percentage, not the names",
+  F.plannerRow(["% Reimbursed"], { costs: { registration: "100" },
+    thirdParties: [{ name: "AASHTO", maxReimb: "50" }] }, {})[0], "0.5");
+
+// a genuine $0 cap is an answer, a blank is not
+var zeroCap = F.receivables([{ id: "z", returnDate: "2026-01-01",
+  thirdParties: [{ name: "X", maxReimb: "0" }] }], new Date(2026, 5, 1));
+check("zero cap stays zero", zeroCap[0].amount, 0);
+check("zero renders as a number, not TBD",
+  F.workdayPacketHtml(zeroCap[0], {}).indexOf("$0") !== -1, true);
+var blankCap = F.receivables([{ id: "b", returnDate: "2026-01-01",
+  thirdParties: [{ name: "X", maxReimb: "" }] }], new Date(2026, 5, 1));
+check("blank cap is unknown", blankCap[0].amount, null);
+check("blank renders as TBD",
+  F.workdayPacketHtml(blankCap[0], {}).indexOf("(amount TBD)") !== -1, true);
+
+// a date-only return means the END of that day, locally
+var sameDay = F.receivables([{ id: "s", returnDate: "2026-08-02",
+  thirdParties: [{ name: "X", maxReimb: "10" }] }], new Date(2026, 7, 2, 9, 0, 0));
+check("trip returning today is not yet a receivable", sameDay.length, 0);
+var nextDay = F.receivables([{ id: "s", returnDate: "2026-08-02",
+  thirdParties: [{ name: "X", maxReimb: "10" }] }], new Date(2026, 7, 3, 9, 0, 0));
+check("the morning after, it is", nextDay.length, 1);
+check("age starts at 0 the next morning", nextDay[0].ageDays, 0);
 
 if (failures) {
   console.error("\n" + failures + " form test(s) FAILED");

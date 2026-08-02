@@ -11,7 +11,7 @@
   <!-- MSAL Browser (provides createNestablePublicClientApplication for NAA) -->
   <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.1/lib/msal-browser.min.js"></script>
 
-  <link rel="stylesheet" href="taskpane.css?v=9" />
+  <link rel="stylesheet" href="taskpane.css?v=10" />
 </head>
 <body>
   <header class="app-head">
@@ -19,11 +19,13 @@
     <p class="sub">One entry &rarr; the Travel Authorization email and the planner spreadsheet row.</p>
   </header>
 
+  <div id="firstRun" class="firstrun" hidden></div>
+
   <section id="trips" class="options" style="margin-top:14px">
     <details open>
-      <summary>\u2708\ufe0f My trips</summary>
+      <summary>✈️ My trips</summary>
       <button id="checkBookings">Check for booking emails</button>
-      <div id="tripsList" class="hint">No requests tracked yet \u2014 submit one and it appears here.</div>
+      <div id="tripsList" class="hint">No requests tracked yet — submit one and it appears here.</div>
     </details>
   </section>
 
@@ -36,7 +38,7 @@
   </section>
 
   <details id="setup" class="options">
-    <summary>Setup (once) \u2014 travelers: just paste your code</summary>
+    <summary>Setup (once) — travelers: just paste your code</summary>
     <div class="fastpath">
       <b>Traveler with a setup code from your coordinator?</b> Paste it here and you're done:
       <textarea id="profileBlobFast" rows="2" placeholder="Setup code"></textarea>
@@ -45,11 +47,11 @@
     <details class="options">
       <summary>Coordinator setup (workbooks, fiscal years, org settings)</summary>
     <label>Pick your planner workbook
-      <select id="wbPick"><option value="">Click \u201cShow my files\u201d\u2026</option></select>
+      <select id="wbPick"><option value="">Click “Show my files”…</option></select>
     </label>
     <div class="row2">
       <button id="wbBrowse">Show my files</button>
-      <input id="wbSearch" type="text" placeholder="or search by name\u2026" />
+      <input id="wbSearch" type="text" placeholder="or search by name…" />
     </div>
     <label>Or paste a link (SharePoint/OneDrive "Copy link")
       <input id="wbUrl" type="text" placeholder="https://yourorg.sharepoint.com/..." />
@@ -105,7 +107,7 @@
 
   <section class="form">
     <h2>Traveler</h2>
-    <label>Name <input id="name" type="text" placeholder="Matt Miller" /></label>
+    <label>Name <span class="req">required</span><input id="name" type="text" placeholder="Matt Miller" /></label>
     <label>Cost center <input id="costCenter" type="text" /></label>
     <div class="row2">
       <label>Division <input id="division" type="text" /></label>
@@ -114,8 +116,8 @@
     <label>Other staff attending <input id="otherStaff" type="text" /></label>
 
     <h2>Event</h2>
-    <label>Conference / event name <input id="event" type="text" /></label>
-    <label>Location (City, State) <input id="location" type="text" /></label>
+    <label>Conference / event name <span class="req">required</span><input id="event" type="text" /></label>
+    <label>Location (City, State) <span class="req">required</span><input id="location" type="text" /></label>
     <div class="row2">
       <label>Event start <input id="eventStart" type="date" /></label>
       <label>Role <input id="attendeeRole" type="text" placeholder="attendee, speaker…" /></label>
@@ -216,13 +218,15 @@
       <label><input id="doDraft" type="checkbox" checked /> Create email draft to coordinator</label>
       <label><input id="doRow" type="checkbox" checked /> Add row to Division planner</label>
       <button id="submit" class="primary">Create travel request</button>
+      <p class="hint" style="margin:2px 0 0">The email opens as a <b>draft</b> — review it, then press Send. Nothing is submitted for you.</p>
+      <p class="hint" style="margin:4px 0 0"><a href="https://purposebuiltsystems.github.io/travel-desk/quickstart.html" target="_blank" rel="noopener">Quick start &amp; help</a></p>
     </div>
   </section>
 
   <section id="status" class="status" hidden></section>
 
-  <script src="../form.js?v=9"></script>
-  <script src="../graph.js?v=9"></script>
-  <script src="taskpane.js?v=9"></script>
+  <script src="../form.js?v=10"></script>
+  <script src="../graph.js?v=10"></script>
+  <script src="taskpane.js?v=10"></script>
 </body>
 </html>

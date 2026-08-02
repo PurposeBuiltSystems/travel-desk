@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quick Start — Travel Desk</title>
+  <style>
+    body { font-family: -apple-system, Segoe UI, sans-serif; margin: 3rem auto; max-width: 44rem; padding: 0 1rem; color: #242424; line-height: 1.6; }
+    h1 { color: #0f6cbd; } h2 { color: #0f6cbd; margin-top: 2.4rem; }
+    .step { background: #f8f8f8; border-radius: 8px; padding: 10px 14px; margin: 8px 0; }
+    .step b { color: #0f6cbd; }
+    .note { background: #fff8e6; border-radius: 8px; padding: 10px 14px; margin: 12px 0; }
+    .lede { background: #eff6fc; border-radius: 8px; padding: 12px 16px; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: .95em; }
+    th, td { border: 1px solid #d1d1d1; padding: 6px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef4f6; }
+    footer { margin-top: 3rem; color: #616161; font-size: .9em; }
+    @media print { body { margin: 0.5in; } }
+  </style>
+</head>
+<body>
+  <h1>Travel Desk — Quick Start</h1>
+  <p class="lede">Travel Desk turns <b>one form</b> into the two things every out-of-state
+     trip needs: the <b>Travel Authorization email</b> to your coordinator, and the
+     <b>row in the shared travel planner</b>. Then it keeps track of what happens next —
+     bookings, and money a third party owes you back.</p>
+
+  <h2>Travelers: your first trip (5 minutes)</h2>
+  <div class="step"><b>1.</b> Open any email in Outlook and click <b>Travel Desk</b> on the
+     ribbon. The form opens in a panel on the right.</div>
+  <div class="step"><b>2.</b> <b>Did your coordinator send you a setup code?</b> Open
+     <b>Setup (once)</b> at the top, paste the code in the blue box, and click
+     <b>Apply my code</b>. That's your entire setup — the planner, coordinator address, and
+     fiscal-year rules all arrive with the code. (No code? Skip to step 3; ask your
+     coordinator for one, or see the coordinator section below.)</div>
+  <div class="step"><b>3.</b> Fill in the form. Only three fields are truly required —
+     they're marked <b>required</b>: your <b>Name</b>, the <b>Conference / event name</b>,
+     and the <b>Location</b>. Everything else improves the paperwork but won't block you.</div>
+  <div class="step"><b>4.</b> Stuck on <b>Reason for travel</b>? Tap one of the grey
+     justification chips (Professional development, Committee member, Presenting…) — it drops
+     a sentence into the box that you can edit.</div>
+  <div class="step"><b>5.</b> Enter costs as you know them. The <b>Estimated total</b> updates
+     as you type, and lodging is calculated for you (nights × rate).</div>
+  <div class="step"><b>6.</b> Being reimbursed by a conference, association, or grant? Open
+     <b>Third-party reimbursement #1</b> and fill in who's paying, how much, and their
+     <b>billing contact email</b>. That last one matters — it's what lets Travel Desk chase
+     the money later.</div>
+  <div class="step"><b>7.</b> Click <b>Create travel request</b> at the bottom. Your email
+     <b>draft opens for you to review</b> — read it, then press <b>Send</b> yourself. The
+     planner row is added at the same time.</div>
+
+  <div class="note"><b>Nothing is submitted automatically.</b> Travel Desk writes the draft
+     and the planner row; you always press Send. If the draft doesn't pop up, it's waiting in
+     your Drafts folder.</div>
+
+  <h2>After the trip is filed</h2>
+  <table>
+    <tr><th>Section</th><th>What it does</th></tr>
+    <tr><td><b>✈️ My trips</b></td>
+        <td>Lists what you've filed. <b>Check for booking emails</b> scans your inbox for
+            confirmations (Concur or whoever your org books through) and links them to the
+            right trip, so you can see at a glance what's still unbooked.</td></tr>
+    <tr><td><b>💵 Third-party reimbursements owed</b></td>
+        <td>After a trip ends, anything a third party agreed to cover shows up here, aged
+            in days. <b>Workday packet</b> drafts the email finance needs to set up the
+            receivable in Workday. <b>Remind</b> drafts a polite nudge to the third party.
+            Record the Workday number, and mark <b>Received ✓</b> when the money lands.</td></tr>
+  </table>
+  <div class="note">Travel Desk never touches Workday itself. It prepares the request and
+     tracks the follow-up; a human in finance keys the entry.</div>
+
+  <h2>Coordinators: one-time setup (15 minutes)</h2>
+  <p>Do this once, then hand every traveler a setup code and you're finished.</p>
+  <div class="step"><b>1.</b> Open <b>Setup (once)</b> → <b>Coordinator setup</b>.</div>
+  <div class="step"><b>2.</b> Click <b>Show my files</b> and pick the travel planner workbook
+     (or paste a SharePoint/OneDrive "Copy link"). Click <b>Connect workbook</b>.</div>
+  <div class="step"><b>3.</b> Pick the <b>Planner table</b> from the dropdown.
+     <b>Important:</b> the planner sheet must be a real Excel <i>Table</i>
+     (in Excel: select your data → <b>Insert &gt; Table</b>). If the dropdown is empty,
+     that's why — Travel Desk needs a table to append rows safely.</div>
+  <div class="step"><b>4.</b> Set <b>This planner covers fiscal year</b> (e.g. SFY27) and click
+     <b>Save planner for this year</b>. Next year, connect the new workbook and save it under
+     the new year — trips route themselves to the right planner by date. Leave the year blank
+     to use one workbook for everything.</div>
+  <div class="step"><b>5.</b> Fill in <b>Coordinator email</b> (where authorization requests
+     go), <b>Finance / AR contact</b> (where Workday receivable packets go — blank sends them
+     to you), <b>Organization name</b>, the <b>fiscal year</b> rules, and your
+     <b>funding program label</b> (TEWD, Grant, Program — or blank to hide the field).</div>
+  <div class="step"><b>6.</b> Open <b>Org profile</b> → <b>Copy profile</b>. Email that code
+     to your travelers with one line: <i>"Open Travel Desk → Setup → paste this → Apply."</i>
+     Every traveler is then configured identically, and you never answer a setup question.</div>
+
+  <div class="note"><b>Template drift is handled.</b> Travel Desk matches your planner's
+     columns by <i>header name</i>, not position — so when next year's template moves or
+     renames columns, it keeps working.</div>
+
+  <h2>Analytics (optional)</h2>
+  <p>Because the planner is an Excel table on SharePoint, Power BI reads it natively —
+     budget burn per division, a follow-up queue, a destination map. The build recipe is in
+     <b>POWERBI.md</b> in the project repository; hand it to whoever runs Power BI at your
+     agency.</p>
+
+  <h2>Trouble</h2>
+  <table>
+    <tr><th>What you see</th><th>What to do</th></tr>
+    <tr><td>The <b>Planner table</b> dropdown is empty</td>
+        <td>The sheet isn't an Excel Table yet. In Excel: select the data → Insert &gt; Table →
+            save → click Connect workbook again.</td></tr>
+    <tr><td>"Name, event, and location are required"</td>
+        <td>Those three fields are blank — they're the ones marked <b>required</b>.</td></tr>
+    <tr><td>The draft didn't open</td>
+        <td>Some Outlook versions block pop-ups. The draft was still created — check your
+            Drafts folder.</td></tr>
+    <tr><td>Nothing in <b>reimbursements owed</b></td>
+        <td>Only trips that have already <i>ended</i> and had a third party entered appear
+            there. Trips filed before this feature existed won't show.</td></tr>
+    <tr><td>A sign-in popup appears</td>
+        <td>Normal — Travel Desk acts as you, using your own Microsoft 365 permissions. It
+            never sees anything you couldn't already open.</td></tr>
+  </table>
+
+  <footer>
+    <p>PurposeBuilt Systems ·
+       <a href="index.html">Overview</a> ·
+       <a href="support.html">Support</a> ·
+       <a href="privacy-policy.html">Privacy</a></p>
+  </footer>
+</body>
+</html>

@@ -33,6 +33,7 @@
     Object.keys(patch).forEach(function (k) { s[k] = patch[k]; });
     Office.context.roamingSettings.set(SETTINGS_KEY, JSON.stringify(s));
     Office.context.roamingSettings.saveAsync(function () {});
+    try { renderFirstRun(); } catch (e) { /* pre-DOM calls are fine */ }
     return s;
   }
 
@@ -94,6 +95,7 @@
     if (trips().length === 0 && tripsEl) { tripsEl.removeAttribute("open"); }
     renderReimb();
     renderTrips();
+    renderFirstRun();
     byId("savePlanner").addEventListener("click", savePlanner);
     byId("plannerList").addEventListener("click", function (ev) {
       var k = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-del");
@@ -272,6 +274,50 @@
     saveTrips(list);
     renderTrips();
     renderReimb();
+    renderFirstRun();
+  }
+
+  /**
+   * First-run guidance. A brand-new traveler opens a 40-field form with no
+   * idea where to start; this says it in one line and disappears for good
+   * once they're configured and have filed something.
+   */
+  function renderFirstRun() {
+    var el = byId("firstRun");
+    if (!el) { return; }
+    var s = settings();
+    var configured = !!(s.wbUrl || s.coordEmail ||
+      (s.planners && Object.keys(s.planners).length));
+    if (configured && trips().length) { el.hidden = true; return; }
+
+    el.hidden = false;
+    el.innerHTML = "";
+    var h = document.createElement("p");
+    h.className = "firstrun-h";
+    var body = document.createElement("p");
+    body.className = "firstrun-b";
+
+    if (!configured) {
+      h.textContent = "\ud83d\udc4b First time here?";
+      body.innerHTML = "If your travel coordinator sent you a <b>setup code</b>, paste it into " +
+        "Setup below \u2014 that is the entire setup. No code? Open <b>Coordinator setup</b> " +
+        "to connect the planner workbook yourself. Either way you only do this once.";
+      var btn = document.createElement("button");
+      btn.textContent = "Open setup";
+      btn.addEventListener("click", function () {
+        var setup = byId("setup");
+        setup.setAttribute("open", "open");
+        try { setup.scrollIntoView({ behavior: "smooth", block: "start" }); }
+        catch (e) { setup.scrollIntoView(); }
+      });
+      el.appendChild(h); el.appendChild(body); el.appendChild(btn);
+      return;
+    }
+    h.textContent = "\u2705 You're set up \u2014 here's the routine";
+    body.innerHTML = "Fill in <b>Traveler</b>, <b>Event</b>, and <b>Travel &amp; costs</b>, then click " +
+      "<b>Create travel request</b> at the bottom. Only the fields marked " +
+      "<i>required</i> must be filled. The email opens as a draft for you to review and send.";
+    el.appendChild(h); el.appendChild(body);
   }
 
   function esc(s) {

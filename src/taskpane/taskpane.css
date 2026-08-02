@@ -184,3 +184,21 @@ button:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, v
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation-duration: .01s !important; }
 }
+
+/* first-run guidance — shows only until the user is set up and has filed once */
+.firstrun {
+  background: var(--accent-soft); border-radius: var(--radius);
+  padding: 12px 14px; margin: 12px 0 4px;
+  border-left: 4px solid var(--accent);
+}
+.firstrun-h { margin: 0 0 4px; font-weight: 700; color: var(--accent-soft-fg); font-size: 13.5px; }
+.firstrun-b { margin: 0; color: var(--fg); font-size: 12.5px; line-height: 1.5; }
+.firstrun button { margin-top: 10px; }
+
+/* required-field marker */
+.req {
+  display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em; color: var(--err-fg);
+  background: var(--err-bg); border-radius: 999px; padding: 1px 7px; vertical-align: 1px;
+}
+.actions .hint a { color: var(--accent); font-weight: 600; }

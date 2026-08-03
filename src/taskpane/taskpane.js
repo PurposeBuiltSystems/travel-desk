@@ -14,6 +14,19 @@
 
   function byId(id) { return document.getElementById(id); }
 
+  /**
+   * Outlook caches the pane HTML but the ?v= query string makes it fetch
+   * JavaScript fresh, so a returning user can run today's JS against
+   * yesterday's page. Binding through this helper means a missing element
+   * costs one feature instead of throwing and leaving EVERY button dead.
+   */
+  function on(id, ev, fn) {
+    var el = byId(id);
+    if (el) { el.addEventListener(ev, fn); }
+    return el;
+  }
+  function val(id) { var el = byId(id); return el ? el.value : ""; }
+
   function setStatus(kind, text) {
     var el = byId("status");
     if (!text) { el.hidden = true; return; }
@@ -67,9 +80,13 @@
       opt.value = opt.textContent = s.tableName;
       byId("tableName").appendChild(opt);
     }
-    ORG_FIELDS.forEach(function (k) { if (s[k] != null && s[k] !== "") { byId(k).value = s[k]; } });
+    ORG_FIELDS.forEach(function (k) {
+      var el = byId(k);
+      if (el && s[k] != null && s[k] !== "") { el.value = s[k]; }
+    });
     ["name", "costCenter", "division", "bureau"].forEach(function (k) {
-      if (s[k]) { byId(k).value = s[k]; }
+      var el = byId(k);
+      if (el && s[k]) { el.value = s[k]; }
     });
     if (!s.name) {
       var prof = Office.context.mailbox.userProfile;
@@ -78,14 +95,14 @@
     if (!s.wbUrl) { byId("setup").setAttribute("open", "open"); }
     applyOrgLabels();
 
-    byId("connect").addEventListener("click", connectWorkbook);
-    byId("wbBrowse").addEventListener("click", browseWorkbooks);
-    byId("wbSearch").addEventListener("keydown", function (ev) {
+    on("connect", "click", connectWorkbook);
+    on("wbBrowse", "click", browseWorkbooks);
+    on("wbSearch", "keydown", function (ev) {
       if (ev.key === "Enter") { ev.preventDefault(); browseWorkbooks(); }
     });
-    byId("wbPick").addEventListener("change", pickWorkbook);
-    byId("checkBookings").addEventListener("click", checkBookings);
-    byId("profileApplyFast").addEventListener("click", function () {
+    on("wbPick", "change", pickWorkbook);
+    on("checkBookings", "click", checkBookings);
+    on("profileApplyFast", "click", function () {
       byId("profileBlob").value = byId("profileBlobFast").value;
       profileApply();
       byId("profileBlobFast").value = "";
@@ -93,11 +110,10 @@
     // returning users: lead with their trips; first-timers see the form
     var tripsEl = byId("trips").querySelector("details");
     if (trips().length === 0 && tripsEl) { tripsEl.removeAttribute("open"); }
-    renderReimb();
-    renderTrips();
-    renderFirstRun();
-    byId("savePlanner").addEventListener("click", savePlanner);
-    byId("plannerList").addEventListener("click", function (ev) {
+    try { renderReimb(); renderTrips(); renderFirstRun(); }
+    catch (e) { /* stale cached page — wiring below still binds */ }
+    on("savePlanner", "click", savePlanner);
+    on("plannerList", "click", function (ev) {
       var k = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-del");
       if (!k) { return; }
       var st = settings();
@@ -116,17 +132,17 @@
       byId("wbFy").value = TravelForm.fiscalLabel(iso, s.fyStartMonth, s.fyPrefix) || "";
     }
     renderPlannerList();
-    byId("justChips").addEventListener("click", function (ev) {
+    on("justChips", "click", function (ev) {
       var t = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-txt");
       if (!t) { return; }
       var box = byId("reason");
       box.value = (box.value.trim() ? box.value.trim() + " " : "") + t;
     });
-    byId("submit").addEventListener("click", submit);
-    byId("profileCopy").addEventListener("click", profileCopy);
-    byId("profileApply").addEventListener("click", profileApply);
+    on("submit", "click", submit);
+    on("profileCopy", "click", profileCopy);
+    on("profileApply", "click", profileApply);
     ORG_FIELDS.forEach(function (k) {
-      byId(k).addEventListener("change", function () {
+      on(k, "change", function () {
         var patch = {};
         patch[k] = byId(k).value;
         saveSettings(patch);
@@ -135,12 +151,12 @@
     });
     ["cTravelMode", "cLuggage", "cParking", "cTaxi", "cLodgingNights",
      "cLodgingRate", "cRegistration", "cAdditional"].forEach(function (id) {
-      byId(id).addEventListener("input", refreshTotal);
+      on(id, "input", refreshTotal);
     });
     ["eventStart", "departDate"].forEach(function (id) {
-      byId(id).addEventListener("change", refreshFyLine);
+      on(id, "change", refreshFyLine);
     });
-    byId("eventStart").addEventListener("change", function () {
+    on("eventStart", "change", function () {
       // prefill the free-text conference dates from the event start
       if (!byId("confDates").value.trim() && byId("eventStart").value) {
         var d = new Date(byId("eventStart").value + "T00:00:00");
@@ -171,7 +187,10 @@
       var patch = {};
       PROFILE_FIELDS.forEach(function (k) { if (p[k] != null) { patch[k] = p[k]; } });
       saveSettings(patch);
-      ORG_FIELDS.forEach(function (k) { if (patch[k] != null) { byId(k).value = patch[k]; } });
+      ORG_FIELDS.forEach(function (k) {
+        var el = byId(k);
+        if (el && patch[k] != null) { el.value = patch[k]; }
+      });
       if (patch.wbUrl) { byId("wbUrl").value = patch.wbUrl; }
       if (patch.tableName) {
         var sel = byId("tableName");
@@ -385,6 +404,7 @@
 
   function renderReimb() {
     var el = byId("reimbList");
+    if (!el) { return; }
     var list = TravelForm.receivables(trips(), new Date());
     if (!list.length) { el.innerHTML = "No third-party reimbursements to chase."; return; }
     el.innerHTML = "";
@@ -431,6 +451,7 @@
 
   function renderTrips() {
     var el = byId("tripsList");
+    if (!el) { return; }
     var list = trips();
     if (!list.length) { el.innerHTML = "No requests tracked yet \u2014 submit one and it appears here."; return; }
     el.innerHTML = list.slice().reverse().map(function (t, ri) {
@@ -603,7 +624,7 @@
     var name = byId("tp" + n + "Name").value.trim();
     return {
       name: name,
-      contact: byId("tp" + n + "Contact").value.trim(),
+      contact: val("tp" + n + "Contact").trim(),
       project: byId("tp" + n + "Project").value.trim(),
       packet: byId("tp" + n + "Packet").checked,
       maxReimb: byId("tp" + n + "Max").value,

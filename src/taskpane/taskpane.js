@@ -96,6 +96,8 @@
     applyOrgLabels();
 
     on("connect", "click", connectWorkbook);
+    on("makeTable", "click", makeTable);
+    on("createPlanner", "click", createPlanner);
     on("wbBrowse", "click", browseWorkbooks);
     on("wbSearch", "keydown", function (ev) {
       if (ev.key === "Enter") { ev.preventDefault(); browseWorkbooks(); }
@@ -590,6 +592,97 @@
     }
   }
 
+  /** Populate the sheet picker so a table-less workbook can be converted. */
+  async function offerTableConversion(token, ref) {
+    var box = byId("noTableBox");
+    var sel = byId("tableSheet");
+    if (!box || !sel) { return; }
+    try {
+      var sheets = await GraphData.listWorksheets(token, ref);
+      sel.innerHTML = "";
+      sheets.forEach(function (n) {
+        var o = document.createElement("option");
+        o.value = o.textContent = n;
+        sel.appendChild(o);
+      });
+      box.hidden = !sheets.length;
+    } catch (e) { box.hidden = true; }
+  }
+
+  /**
+   * Convert the chosen sheet's used range into a real Excel Table. The data
+   * is untouched — a table is a wrapper, so the overall view keeps every row
+   * and gains filters, an auto-expanding range, and something Power BI and
+   * this add-in can both bind to.
+   */
+  async function makeTable() {
+    var sheet = val("tableSheet");
+    if (!wbRef) { setStatus("error", "Connect the workbook first."); return; }
+    if (!sheet) { setStatus("error", "Pick which sheet the planner is on."); return; }
+    byId("makeTable").disabled = true;
+    try {
+      setStatus("work", "Reading \u201c" + sheet + "\u201d\u2026");
+      var token = await GraphData.getToken();
+      var used = await GraphData.usedRange(token, wbRef, sheet);
+      var address = used && used.address;
+      if (!address) { throw new Error("that sheet looks empty — add your header row first"); }
+      setStatus("work", "Creating the table\u2026");
+      var t = await GraphData.addTable(token, wbRef, address, "TravelPlanner");
+      var name = (t && t.name) || "TravelPlanner";
+      var sel = byId("tableName");
+      sel.innerHTML = "";
+      var o = document.createElement("option");
+      o.value = o.textContent = name;
+      sel.appendChild(o);
+      byId("noTableBox").hidden = true;
+      saveSettings({ wbUrl: byId("wbUrl").value.trim(), tableName: name });
+      setStatus("info", "\u201c" + sheet + "\u201d is now the table \u201c" + name +
+        "\u201d (" + address + ") \u2014 every existing row is still there. Set the fiscal year and save the planner.");
+    } catch (e) {
+      setStatus("error", "Couldn't create the table: " + ((e && e.message) || e));
+    } finally {
+      byId("makeTable").disabled = false;
+    }
+  }
+
+  /** Generate a correctly-shaped planner in OneDrive and connect to it. */
+  async function createPlanner() {
+    var name = (val("newPlannerName") || "Division travel planner").trim();
+    if (!/\.xlsx$/i.test(name)) { name += ".xlsx"; }
+    byId("createPlanner").disabled = true;
+    try {
+      setStatus("work", "Building the workbook\u2026");
+      var built = XlsxGen.buildWorkbook(TravelForm.DEFAULT_PLANNER_HEADERS, "Planner");
+      var zip = new JSZip();
+      Object.keys(built.parts).forEach(function (path) { zip.file(path, built.parts[path]); });
+      var bytes = await zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" });
+
+      setStatus("work", "Saving it to your OneDrive\u2026");
+      var token = await GraphData.getToken();
+      var made = await GraphData.uploadWorkbook(token, name, bytes);
+      wbRef = { driveId: made.ref.driveId, itemId: made.ref.itemId, name: made.name };
+
+      setStatus("work", "Formatting it as a table\u2026");
+      var t = await GraphData.addTable(token, wbRef, built.range, "TravelPlanner");
+      var tableName = (t && t.name) || "TravelPlanner";
+
+      var sel = byId("tableName");
+      sel.innerHTML = "";
+      var o = document.createElement("option");
+      o.value = o.textContent = tableName;
+      sel.appendChild(o);
+      byId("wbUrl").value = made.webUrl || "";
+      byId("noTableBox").hidden = true;
+      saveSettings({ wbUrl: made.webUrl || "", tableName: tableName });
+      setStatus("info", "Created \u201c" + made.name + "\u201d in your OneDrive and connected it. " +
+        "Set the fiscal year it covers, then Save planner for this year.");
+    } catch (e) {
+      setStatus("error", "Couldn't create the planner: " + ((e && e.message) || e));
+    } finally {
+      byId("createPlanner").disabled = false;
+    }
+  }
+
   async function connectWorkbook() {
     var url = byId("wbUrl").value.trim();
     if (!url) { setStatus("error", "Paste the planner workbook's link first (Copy link in SharePoint/OneDrive)."); return; }
@@ -600,9 +693,13 @@
       wbRef = await GraphData.resolveWorkbook(token, url);
       var tables = await GraphData.listTables(token, wbRef);
       if (!tables.length) {
-        setStatus("error", "\"" + wbRef.name + "\" has no Excel Table. In Excel: select the planner's header row and data, Insert > Table, then reconnect. (Tables are what keep row-adds reliable.)");
+        await offerTableConversion(token, wbRef);
+        setStatus("error", "\"" + wbRef.name + "\" has no Excel table yet — pick the sheet below and " +
+          "click \u201cMake this sheet a table\u201d.");
         return;
       }
+      var box = byId("noTableBox");
+      if (box) { box.hidden = true; }
       var sel = byId("tableName");
       sel.innerHTML = "";
       tables.forEach(function (t) {
@@ -704,6 +801,7 @@
         fundingLabel: s.fundingLabel || "",
         fyStartMonth: Number(s.fyStartMonth) || 1,
         fyPrefix: s.fyPrefix || "FY",
+        costMode: val("costMode") || "per-person",
       };
 
       if (doDraft) {
@@ -739,8 +837,15 @@
           tableName = s.tableName;
         }
         var headers = await GraphData.tableHeaders(token, ref, tableName);
-        await GraphData.addTableRow(token, ref, tableName, TravelForm.plannerRow(headers, m, orgOpts));
-        done.push("row added to " + (picked && picked.key !== "*" ? picked.key + " planner (" : "") +
+        // One row per traveler: the planner's convention is one line per
+        // person per event, and anything less undercounts a delegation.
+        var rows = TravelForm.plannerRows(headers, m, orgOpts);
+        for (var ri = 0; ri < rows.length; ri++) {
+          if (rows.length > 1) { setStatus("work", "Adding planner row " + (ri + 1) + " of " + rows.length + "…"); }
+          await GraphData.addTableRow(token, ref, tableName, rows[ri]);
+        }
+        done.push(rows.length + (rows.length === 1 ? " row" : " rows (one per traveler)") +
+          " added to " + (picked && picked.key !== "*" ? picked.key + " planner (" : "") +
           (ref.name || "the planner") + (picked && picked.key !== "*" ? ")" : ""));
       }
 

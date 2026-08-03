@@ -10,8 +10,10 @@
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <!-- MSAL Browser (provides createNestablePublicClientApplication for NAA) -->
   <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.1/lib/msal-browser.min.js"></script>
+  <!-- JSZip: packages the generated planner workbook client-side -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-  <link rel="stylesheet" href="taskpane.css?v=12" />
+  <link rel="stylesheet" href="taskpane.css?v=13" />
 </head>
 <body>
   <header class="app-head">
@@ -46,6 +48,15 @@
     </div>
     <details class="options">
       <summary>Coordinator setup (workbooks, fiscal years, org settings)</summary>
+    <div class="fastpath" style="margin-bottom:10px">
+      <b>No planner yet?</b> Create one with the right columns already set up.
+      <div class="row2">
+        <label>File name <input id="newPlannerName" type="text" placeholder="Division travel planner 2027" /></label>
+        <label>&nbsp;<button id="createPlanner" class="primary" style="width:100%">Create my planner</button></label>
+      </div>
+      <p class="hint" style="margin:4px 0 0">Saved to your OneDrive, formatted as an Excel table, and connected automatically.</p>
+    </div>
+
     <label>Pick your planner workbook
       <select id="wbPick"><option value="">Click “Show my files”…</option></select>
     </label>
@@ -60,6 +71,15 @@
     <label>Planner table
       <select id="tableName"></select>
     </label>
+    <div id="noTableBox" class="warnbox" hidden>
+      <b>This workbook has no Excel table yet.</b> Travel Desk adds rows through a
+      table, so pick the sheet your planner is on and convert it — your data stays
+      exactly as it is.
+      <div class="row2">
+        <label>Sheet <select id="tableSheet"></select></label>
+        <label>&nbsp;<button id="makeTable" class="primary" style="width:100%">Make this sheet a table</button></label>
+      </div>
+    </div>
     <label>This planner covers fiscal year
       <input id="wbFy" type="text" placeholder="e.g. SFY27 — leave blank to use it for every year" />
     </label>
@@ -113,7 +133,16 @@
       <label>Division <input id="division" type="text" /></label>
       <label>Bureau <input id="bureau" type="text" /></label>
     </div>
-    <label>Other staff attending <input id="otherStaff" type="text" /></label>
+    <label>Other travelers on this trip — one per line
+      <textarea id="otherStaff" rows="2" placeholder="Jane Doe, MVD, Field Ops, speaker&#10;Bob Roe"></textarea>
+    </label>
+    <p class="hint" style="margin:2px 0 0">Name first; division, bureau and role are optional and inherit yours if left off. <b>Each person gets their own planner row</b> so the totals count everybody.</p>
+    <label>Costs entered above are
+      <select id="costMode">
+        <option value="per-person">per person (each traveler costs this much)</option>
+        <option value="split">for the whole group (split evenly)</option>
+      </select>
+    </label>
 
     <h2>Event</h2>
     <label>Conference / event name <span class="req">required</span><input id="event" type="text" /></label>
@@ -225,8 +254,9 @@
 
   <section id="status" class="status" hidden></section>
 
-  <script src="../form.js?v=12"></script>
-  <script src="../graph.js?v=12"></script>
-  <script src="taskpane.js?v=12"></script>
+  <script src="../form.js?v=13"></script>
+  <script src="../xlsxgen.js?v=13"></script>
+  <script src="../graph.js?v=13"></script>
+  <script src="taskpane.js?v=13"></script>
 </body>
 </html>

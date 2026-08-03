@@ -93,6 +93,61 @@
     return ((res.values || [])[0] || []).map(function (h) { return String(h == null ? "" : h); });
   }
 
+  /** Worksheet names in a connected workbook. */
+  async function listWorksheets(token, ref) {
+    var res = await graphJson(token, "GET", wbBase(ref) + "/worksheets?$select=name");
+    return (res.value || []).map(function (w) { return w.name; });
+  }
+
+  /** Used range of a sheet — tells us where the headers actually are. */
+  async function usedRange(token, ref, sheetName) {
+    return graphJson(token, "GET", wbBase(ref) + "/worksheets/" +
+      encodeURIComponent(sheetName) + "/usedRange?$select=address,rowCount,columnCount,values");
+  }
+
+  /**
+   * Turn a plain sheet range into a real Excel Table — the thing Travel
+   * Desk appends rows through. Address is Excel A1 style, e.g.
+   * "Planner!A1:O40". Optionally renames it so the picker is readable.
+   */
+  async function addTable(token, ref, address, name) {
+    var t = await graphJson(token, "POST", wbBase(ref) + "/tables/add",
+      { address: address, hasHeaders: true });
+    if (name && t && t.id) {
+      try {
+        var renamed = await graphJson(token, "PATCH",
+          wbBase(ref) + "/tables/" + encodeURIComponent(t.id), { name: name });
+        return renamed || t;
+      } catch (e) { return t; } // a name clash is cosmetic; the table exists
+    }
+    return t;
+  }
+
+  /** Create a workbook in the user's OneDrive root. Returns a {driveId,itemId} ref. */
+  async function uploadWorkbook(token, filename, bytes) {
+    var res = await fetch(GRAPH + "/me/drive/root:/" +
+      encodeURIComponent(filename) + ":/content", {
+      method: "PUT",
+      headers: {
+        Authorization: "Bearer " + token,
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      },
+      body: bytes,
+    });
+    if (!res.ok) {
+      var txt = await res.text();
+      if (res.status === 404) {
+        throw new Error("Your OneDrive isn't set up yet — open onedrive.com once, then try again.");
+      }
+      throw new Error("Couldn't create the workbook (" + res.status + ") " + txt.slice(0, 200));
+    }
+    var item = await res.json();
+    return {
+      ref: { driveId: (item.parentReference || {}).driveId, itemId: item.id },
+      name: item.name, webUrl: item.webUrl,
+    };
+  }
+
   /** Append one row to the planner table. */
   async function addTableRow(token, ref, tableName, rowValues) {
     return graphJson(token, "POST",
@@ -176,6 +231,10 @@
     sharedWorkbooks: sharedWorkbooks,
     searchWorkbooks: searchWorkbooks,
     listTables: listTables,
+    listWorksheets: listWorksheets,
+    usedRange: usedRange,
+    addTable: addTable,
+    uploadWorkbook: uploadWorkbook,
     tableHeaders: tableHeaders,
     addTableRow: addTableRow,
     createDraft: createDraft,

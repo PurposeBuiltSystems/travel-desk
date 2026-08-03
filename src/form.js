@@ -104,7 +104,10 @@
       if (k.indexOf("bureau") !== -1 || k.indexOf("office") !== -1 || k.indexOf("team") !== -1) { return model.bureau || ""; }
       if ((k.indexOf("attendee") !== -1 || k.indexOf("traveler") !== -1 || k.indexOf("name") !== -1) && k.indexOf("role") === -1) { return model.name || ""; }
       if (k.indexOf("role") !== -1) { return model.attendeeRole || ""; }
-      if (k.indexOf("cost") !== -1 || k.indexOf("estimate") !== -1) { return totals.grand ? String(Math.round(totals.grand)) : ""; }
+      if (k.indexOf("cost") !== -1 || k.indexOf("estimate") !== -1) {
+        var amt = opts.costOverride != null ? opts.costOverride : totals.grand;
+        return amt ? String(Math.round(amt)) : "";
+      }
       // "% Reimbursed" must be tested BEFORE the third-party names below,
       // or the shared word "reimburs" steals the percentage column.
       if (k.indexOf("%") !== -1) { return reimbursePct(model); }
@@ -337,8 +340,61 @@
       "</div>";
   }
 
+  /** Columns a generated planner starts with — chosen so every one of them
+   *  is filled by the header matcher above. */
+  var DEFAULT_PLANNER_HEADERS = ["Traveler", "Division", "Bureau", "Event", "Destination",
+    "Start date", "Role", "Estimated cost", "% Reimbursed", "3rd Party", "Funding",
+    "Fiscal year", "Status", "Comments", "Approver"];
+
+  /**
+   * "Other travelers" box -> structured travelers. One per line:
+   *   Jane Doe, MVD, Field Ops, speaker
+   * Only the name is required; blank parts inherit the primary traveler's.
+   */
+  function parseTravelers(text) {
+    return String(text || "").split(/[\n;]+/).map(function (line) {
+      var parts = line.split(",").map(function (x) { return x.trim(); });
+      if (!parts[0]) { return null; }
+      return { name: parts[0], division: parts[1] || "", bureau: parts[2] || "", role: parts[3] || "" };
+    }).filter(Boolean);
+  }
+
+  /**
+   * The planner convention is one row per PERSON per event, so a delegation
+   * has to become several rows or the overall view (and any budget total)
+   * undercounts the trip. Returns one row per traveler.
+   * opts.costMode: "per-person" (each row carries the entered cost, the
+   * usual case) or "split" (the entered cost is the group's, divided).
+   */
+  function plannerRows(headers, model, opts) {
+    opts = opts || {};
+    var extra = parseTravelers(model.otherStaff);
+    var people = [{ name: model.name, division: model.division, bureau: model.bureau, role: model.attendeeRole }]
+      .concat(extra);
+    var grand = computeTotals(model).grand;
+    var override = null;
+    if (opts.costMode === "split" && people.length > 1 && grand) {
+      override = grand / people.length;
+    }
+    return people.map(function (p) {
+      var m = {};
+      Object.keys(model).forEach(function (k) { m[k] = model[k]; });
+      m.name = p.name || model.name;
+      m.division = p.division || model.division;
+      m.bureau = p.bureau || model.bureau;
+      m.attendeeRole = p.role || model.attendeeRole;
+      var o = {};
+      Object.keys(opts).forEach(function (k) { o[k] = opts[k]; });
+      if (override != null) { o.costOverride = override; }
+      return plannerRow(headers, m, o);
+    });
+  }
+
   var api = {
     pickPlanner: pickPlanner,
+    DEFAULT_PLANNER_HEADERS: DEFAULT_PLANNER_HEADERS,
+    parseTravelers: parseTravelers,
+    plannerRows: plannerRows,
     receivables: receivables,
     workdayPacketHtml: workdayPacketHtml,
     reminderHtml: reminderHtml,

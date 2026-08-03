@@ -217,6 +217,56 @@ var nextDay = F.receivables([{ id: "s", returnDate: "2026-08-02",
 check("the morning after, it is", nextDay.length, 1);
 check("age starts at 0 the next morning", nextDay[0].ageDays, 0);
 
+/* --- multi-traveler planner rows (one row per person per event) --- */
+
+var G = require("../src/xlsxgen.js");
+var MH = F.DEFAULT_PLANNER_HEADERS;
+var group = {
+  name: "Matt Miller", division: "SOD", bureau: "Field", attendeeRole: "attendee",
+  event: "TRB", location: "DC", eventStart: "2027-01-11",
+  costs: { travelMode: "600", registration: "400" },
+  otherStaff: "Jane Doe, MVD, Ops, speaker\nBob Roe",
+};
+var perPerson = F.plannerRows(MH, group, { fyStartMonth: 7, fyPrefix: "SFY" });
+check("one row per traveler", perPerson.length, 3);
+check("primary first", perPerson[0][0], "Matt Miller");
+check("second traveler name", perPerson[1][0], "Jane Doe");
+check("second traveler division", perPerson[1][1], "MVD");
+check("second traveler role", perPerson[1][6], "speaker");
+check("blank fields inherit the primary's", perPerson[2][1], "SOD");
+check("blank role inherits too", perPerson[2][6], "attendee");
+check("per-person repeats the cost", perPerson[1][7], "1000");
+check("shared trip details repeat", perPerson[2][3], "TRB");
+
+var split = F.plannerRows(MH, group, { fyStartMonth: 7, fyPrefix: "SFY", costMode: "split" });
+check("split divides across travelers", split[0][7], "333");
+check("split applies to everyone", split[2][7], "333");
+
+var solo = F.plannerRows(MH, { name: "Solo", costs: { registration: "500" } }, {});
+check("no extra travelers -> one row", solo.length, 1);
+check("solo split is a no-op", F.plannerRows(MH, { name: "Solo", costs: { registration: "500" } },
+  { costMode: "split" })[0][7], "500");
+
+check("parseTravelers ignores blank lines",
+  F.parseTravelers("Jane Doe\n\n  \nBob Roe").length, 2);
+check("parseTravelers trims parts",
+  F.parseTravelers("  Jane Doe ,  MVD  ")[0].division, "MVD");
+check("parseTravelers on empty input", F.parseTravelers("").length, 0);
+
+/* --- generated workbook --- */
+
+var wbg = G.buildWorkbook(MH, "Planner");
+check("five OOXML parts", Object.keys(wbg.parts).length, 5);
+check("header range matches column count", wbg.range, "'Planner'!A1:O1");
+check("headers land in the sheet",
+  wbg.parts["xl/worksheets/sheet1.xml"].indexOf("<t xml:space=\"preserve\">Traveler</t>") !== -1, true);
+check("sheet name in workbook.xml",
+  wbg.parts["xl/workbook.xml"].indexOf('name="Planner"') !== -1, true);
+check("column letters past Z", G.colLetter(27), "AA");
+check("sheet names with quotes are escaped", G.headerRange("Bob's sheet", 2), "'Bob''s sheet'!A1:B1");
+check("ampersand in a header is escaped",
+  G.buildWorkbook(["A & B"]).parts["xl/worksheets/sheet1.xml"].indexOf("A &amp; B") !== -1, true);
+
 if (failures) {
   console.error("\n" + failures + " form test(s) FAILED");
   process.exit(1);

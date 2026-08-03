@@ -41,6 +41,12 @@
      a sentence into the box that you can edit.</div>
   <div class="step"><b>5.</b> Enter costs as you know them. The <b>Estimated total</b> updates
      as you type, and lodging is calculated for you (nights × rate).</div>
+  <div class="step"><b>5b.</b> <b>Travelling as a group?</b> List the others in
+     <b>Other travelers on this trip</b>, one per line — <code>Jane Doe, MVD, Field Ops, speaker</code>
+     (only the name is required; blank parts inherit yours). Each person gets their own
+     planner row, so division totals and any budget report count everybody. Use the
+     <b>Costs entered above are</b> dropdown to say whether those costs are per person or
+     for the whole group.</div>
   <div class="step"><b>6.</b> Being reimbursed by a conference, association, or grant? Open
      <b>Third-party reimbursement #1</b> and fill in who's paying, how much, and their
      <b>billing contact email</b>. That last one matters — it's what lets Travel Desk chase
@@ -72,12 +78,15 @@
   <h2>Coordinators: one-time setup (15 minutes)</h2>
   <p>Do this once, then hand every traveler a setup code and you're finished.</p>
   <div class="step"><b>1.</b> Open <b>Setup (once)</b> → <b>Coordinator setup</b>.</div>
-  <div class="step"><b>2.</b> Click <b>Show my files</b> and pick the travel planner workbook
-     (or paste a SharePoint/OneDrive "Copy link"). Click <b>Connect workbook</b>.</div>
-  <div class="step"><b>3.</b> Pick the <b>Planner table</b> from the dropdown.
-     <b>Important:</b> the planner sheet must be a real Excel <i>Table</i>
-     (in Excel: select your data → <b>Insert &gt; Table</b>). If the dropdown is empty,
-     that's why — Travel Desk needs a table to append rows safely.</div>
+  <div class="step"><b>2.</b> <b>No planner yet?</b> Type a name and click
+     <b>Create my planner</b> — Travel Desk builds one in your OneDrive with the right
+     columns, formats it as a table, and connects to it. Skip to step 4.<br>
+     <b>Already have a planner?</b> Click <b>Show my files</b> and pick it (or paste its
+     SharePoint/OneDrive "Copy link"), then <b>Connect workbook</b>.</div>
+  <div class="step"><b>3.</b> Pick the <b>Planner table</b>. If the workbook has no table
+     yet, Travel Desk says so and offers <b>Make this sheet a table</b> — choose the sheet
+     your planner is on and click it. Your rows are untouched; a table just lets the add-in
+     append safely, and it gives you filters and an auto-expanding range for free.</div>
   <div class="step"><b>4.</b> Set <b>This planner covers fiscal year</b> (e.g. SFY27) and click
      <b>Save planner for this year</b>. Next year, connect the new workbook and save it under
      the new year — trips route themselves to the right planner by date. Leave the year blank
@@ -104,8 +113,12 @@
   <table>
     <tr><th>What you see</th><th>What to do</th></tr>
     <tr><td>The <b>Planner table</b> dropdown is empty</td>
-        <td>The sheet isn't an Excel Table yet. In Excel: select the data → Insert &gt; Table →
-            save → click Connect workbook again.</td></tr>
+        <td>The sheet isn't an Excel Table yet — use <b>Make this sheet a table</b> in the
+            yellow box that appears. (Doing it manually in Excel works too:
+            select the data → Insert &gt; Table → save → Connect workbook again.)</td></tr>
+    <tr><td>Only one row appeared for a group trip</td>
+        <td>Additional travellers go in <b>Other travelers on this trip</b>, one per line.
+            Names listed in prose elsewhere don't generate rows.</td></tr>
     <tr><td>"Name, event, and location are required"</td>
         <td>Those three fields are blank — they're the ones marked <b>required</b>.</td></tr>
     <tr><td>The draft didn't open</td>

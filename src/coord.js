@@ -68,10 +68,25 @@
     return out;
   }
 
-  /** "Yes - AASHTO" means a third party owes something; "No"/"" doesn't. */
+  /** Written into the third-party cell once the money lands, so the
+   *  coordinator's "owing" list settles without needing a new column in
+   *  somebody else's spreadsheet. Readable as plain English in Excel. */
+  var SETTLED_RE = /\((?:reimbursed|received|paid)[^)]*\)/i;
+
+  function markSettled(cellText, dateIso) {
+    var base = norm(cellText).replace(SETTLED_RE, "").trim();
+    if (!base) { base = "Yes"; }
+    return base + " (reimbursed " + norm(dateIso).slice(0, 10) + ")";
+  }
+
+  function isSettled(cellText) { return SETTLED_RE.test(norm(cellText)); }
+
+  /** "Yes - AASHTO" means a third party owes something; "No", blank, or an
+   *  already-settled cell doesn't. */
   function hasThirdParty(rec) {
     var t = low(rec.thirdParty);
-    return !!t && t !== "no" && t !== "none" && t !== "n/a";
+    if (!t || t === "no" || t === "none" || t === "n/a") { return false; }
+    return !isSettled(rec.thirdParty);
   }
 
   function isBooked(rec) {
@@ -192,8 +207,29 @@
     };
   }
 
+  /**
+   * Which planner row belongs to this trip. Matches on last name + event,
+   * and prefers an exact date when several trips share both — the same key
+   * the authorization reconciliation uses. Returns -1 when nothing matches.
+   */
+  function findRowIndex(records, trip) {
+    var want = keyOf(lastNameOf(trip.traveler || trip.name), trip.event);
+    var hits = [];
+    (records || []).forEach(function (r, i) {
+      if (keyOf(lastNameOf(r.traveler), r.event) === want) { hits.push(i); }
+    });
+    if (!hits.length) { return -1; }
+    if (hits.length === 1) { return hits[0]; }
+    var date = norm(trip.date || trip.eventStart || trip.departDate).slice(0, 10);
+    for (var j = 0; j < hits.length; j++) {
+      if (norm(records[hits[j]].date).slice(0, 10) === date) { return hits[j]; }
+    }
+    return hits[0];
+  }
+
   var api = {
     fieldIndex: fieldIndex, mapRows: mapRows, summarize: summarize,
+    findRowIndex: findRowIndex, markSettled: markSettled, isSettled: isSettled,
     reconcile: reconcile, parseAuthSubject: parseAuthSubject,
     lastNameOf: lastNameOf, hasThirdParty: hasThirdParty, isBooked: isBooked,
   };

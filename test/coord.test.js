@@ -92,6 +92,41 @@ check("authorization with no planner row", rec.authsWithoutRow.map(function (p) 
 check("matched ones appear in neither",
   rec.rowsWithoutAuth.concat(rec.authsWithoutRow).length, 2);
 
+/* ------------------- write-back: locating and settling ------------------- */
+
+check("finds the right row", C.findRowIndex(recs, { traveler: "Dan Poe", event: "Bridge Conf" }), 3);
+check("matches on last name alone", C.findRowIndex(recs, { traveler: "Poe", event: "Bridge Conf" }), 3);
+check("matches 'Poe, Dan' form", C.findRowIndex(recs, { traveler: "Poe, Dan", event: "Bridge Conf" }), 3);
+check("unknown trip -> -1", C.findRowIndex(recs, { traveler: "Nobody", event: "Nowhere" }), -1);
+
+// two travellers to the same event: the date breaks the tie
+var dupes = C.mapRows(H, [
+  ["Ann Lee", "MVD", "", "TRB Annual", "DC", "2026-09-10", "", "1200", "", "No", "", "SFY27", "Requested", "", ""],
+  ["Ann Lee", "MVD", "", "TRB Annual", "DC", "2027-09-10", "", "1300", "", "No", "", "SFY28", "Requested", "", ""],
+]);
+check("same person + event, later date picked",
+  C.findRowIndex(dupes, { traveler: "Ann Lee", event: "TRB Annual", date: "2027-09-10" }), 1);
+check("same person + event, earlier date picked",
+  C.findRowIndex(dupes, { traveler: "Ann Lee", event: "TRB Annual", date: "2026-09-10" }), 0);
+
+check("settling keeps the payer's name",
+  C.markSettled("Yes - AASHTO", "2026-08-15"), "Yes - AASHTO (reimbursed 2026-08-15)");
+check("settling twice doesn't stack markers",
+  C.markSettled("Yes - AASHTO (reimbursed 2026-08-15)", "2026-09-01"),
+  "Yes - AASHTO (reimbursed 2026-09-01)");
+check("settled cells are recognised", C.isSettled("Yes - AASHTO (reimbursed 2026-08-15)"), true);
+check("unsettled cells are not", C.isSettled("Yes - AASHTO"), false);
+check("a settled trip stops showing as owing",
+  C.hasThirdParty({ thirdParty: "Yes - AASHTO (reimbursed 2026-08-15)" }), false);
+check("an unsettled one still does", C.hasThirdParty({ thirdParty: "Yes - AASHTO" }), true);
+
+// end to end: settle Sue's row and she leaves the coordinator's owing list
+var settled = C.mapRows(H, rows.map(function (r) {
+  return r[0] === "Sue Kim" ? r.map(function (v, i) { return i === 9 ? C.markSettled(v, "2026-07-01") : v; }) : r;
+}));
+check("owing list clears once settled",
+  C.summarize(settled, { now: NOW }).endedThirdParty.length, 0);
+
 if (failures) {
   console.error("\n" + failures + " coordinator test(s) FAILED");
   process.exit(1);

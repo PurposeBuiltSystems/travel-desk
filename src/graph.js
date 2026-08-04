@@ -165,6 +165,13 @@
     return res.value || [];
   }
 
+  /** Replace one existing row (0-based index within the data body). */
+  async function updateTableRow(token, ref, tableName, index, values) {
+    return graphJson(token, "PATCH",
+      wbBase(ref) + "/tables/" + encodeURIComponent(tableName) +
+      "/rows/itemAt(index=" + Number(index) + ")", { values: [values] });
+  }
+
   /** Append one row to the planner table. */
   async function addTableRow(token, ref, tableName, rowValues) {
     return graphJson(token, "POST",
@@ -255,6 +262,7 @@
     tableHeaders: tableHeaders,
     addTableRow: addTableRow,
     tableRows: tableRows,
+    updateTableRow: updateTableRow,
     authEmails: authEmails,
     createDraft: createDraft,
     bookingEmails: bookingEmails,

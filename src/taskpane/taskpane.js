@@ -463,6 +463,62 @@
     }
   }
 
+  /** Resolve which planner a trip belongs to (same rule as filing it). */
+  async function plannerFor(token, trip) {
+    var st = settings();
+    var fy = TravelForm.fiscalLabel(trip.eventStart || trip.departDate || trip.date,
+      st.fyStartMonth, st.fyPrefix);
+    var picked = TravelForm.pickPlanner(st.planners, fy);
+    if (picked) {
+      return { ref: picked.planner.wbRef, tableName: picked.planner.tableName };
+    }
+    var ref = wbRef || st.wbRef;
+    if (!ref && st.wbUrl) { ref = await GraphData.resolveWorkbook(token, st.wbUrl); }
+    return { ref: ref, tableName: st.tableName };
+  }
+
+  /**
+   * Update this traveller's own row in the shared planner. Without this the
+   * spreadsheet is append-only: a trip stays "Requested" forever and the
+   * coordinator chases people who already booked. Best-effort by design —
+   * the local state change stands even if the write-back can't happen.
+   */
+  async function writeBackRow(trip, mutate, label) {
+    try {
+      var token = await GraphData.getToken();
+      var pl = await plannerFor(token, trip);
+      if (!pl.ref || !pl.tableName) { return false; }
+      var headers = await GraphData.tableHeaders(token, pl.ref, pl.tableName);
+      var raw = await GraphData.tableRows(token, pl.ref, pl.tableName);
+      var records = TravelCoord.mapRows(headers, raw);
+      var i = TravelCoord.findRowIndex(records, {
+        traveler: trip.name || trip.traveler, event: trip.event,
+        date: trip.eventStart || trip.departDate || trip.date,
+      });
+      if (i < 0) { return false; }
+      // mapRows drops blank rows, so translate back to the raw row position
+      var rawIndex = records[i].rowNumber - 1;
+      var values = (raw[rawIndex] || []).slice();
+      var idx = TravelCoord.fieldIndex(headers);
+      if (!mutate(values, idx)) { return false; }
+      await GraphData.updateTableRow(token, pl.ref, pl.tableName, rawIndex, values);
+      if (label) { setStatus("info", label); }
+      return true;
+    } catch (e) {
+      setStatus("info", "Saved here, but the planner row couldn't be updated (" +
+        ((e && e.message) || e) + "). You can change it in the spreadsheet.");
+      return false;
+    }
+  }
+
+  function markBookedEverywhere(trip) {
+    return writeBackRow(trip, function (values, idx) {
+      if (idx.status == null) { return false; }
+      values[idx.status] = "Booked";
+      return true;
+    }, "Marked booked here and in the shared planner.");
+  }
+
   function esc(s) {
     return String(s == null ? "" : s)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -558,7 +614,18 @@
           if (wd !== null) { updateReimb(r.tripId, r.tpIndex, { wdRef: wd.trim(), status: "invoiced" }); }
         });
         act("Received ✓", function () {
-          updateReimb(r.tripId, r.tpIndex, { status: "received", on: new Date().toISOString().slice(0, 10) });
+          var on = new Date().toISOString().slice(0, 10);
+          updateReimb(r.tripId, r.tpIndex, { status: "received", on: on });
+          // settle it in the shared planner too, or the coordinator keeps
+          // chasing money that already arrived
+          var trip = trips().filter(function (t) { return t.id === r.tripId; })[0];
+          if (trip) {
+            writeBackRow(trip, function (values, idx) {
+              if (idx.thirdParty == null) { return false; }
+              values[idx.thirdParty] = TravelCoord.markSettled(values[idx.thirdParty], on);
+              return true;
+            }, "Marked received here and settled in the shared planner.");
+          }
         });
       } else {
         act("Reopen", function () { updateReimb(r.tripId, r.tpIndex, { status: "invoiced" }); });
@@ -593,7 +660,9 @@
     el.querySelectorAll("[data-book]").forEach(function (b) {
       b.addEventListener("click", function () {
         var list2 = trips();
-        list2[Number(b.getAttribute("data-book"))].status = "booked";
+        var bi = Number(b.getAttribute("data-book"));
+        list2[bi].status = "booked";
+        markBookedEverywhere(list2[bi]);
         saveTrips(list2);
         renderTrips();
       });
@@ -616,6 +685,7 @@
         var m = TravelForm.matchBooking(t, emails);
         if (m.confident) {
           t.status = "booked";
+          markBookedEverywhere(t);
           t.bookingLink = m.confident.webLink || "";
           t.bookingSubject = m.confident.subject || "";
           booked++;

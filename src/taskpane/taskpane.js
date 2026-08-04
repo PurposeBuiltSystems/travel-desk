@@ -213,7 +213,15 @@
         sel.appendChild(opt);
       }
       applyOrgLabels();
-      setStatus("info", "Profile applied" + (patch.wbUrl ? " — click Connect workbook to finish." : "."));
+      // a saved planner carries its resolved ref, so there's nothing left to
+      // click; only a legacy single-workbook code needs Connect
+      var ready = patch.planners && Object.keys(patch.planners).some(function (k) {
+        return patch.planners[k] && patch.planners[k].wbRef;
+      });
+      setStatus("info", ready
+        ? "You're set up — the planner and your coordinator's settings all came across. " +
+          "Fill in the form below and click Create travel request."
+        : (patch.wbUrl ? "Setup applied — click Connect workbook once to finish." : "Setup applied."));
     } catch (e) {
       setStatus("error", "That doesn't look like a valid profile code.");
     }

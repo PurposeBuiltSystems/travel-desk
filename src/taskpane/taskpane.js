@@ -106,8 +106,7 @@
     on("wbPick", "change", pickWorkbook);
     on("checkBookings", "click", checkBookings);
     on("profileApplyFast", "click", function () {
-      byId("profileBlob").value = byId("profileBlobFast").value;
-      profileApply();
+      profileApply(val("profileBlobFast"));
       byId("profileBlobFast").value = "";
     });
     // returning users: lead with their trips; first-timers see the form
@@ -143,7 +142,6 @@
     });
     on("submit", "click", submit);
     on("profileCopy", "click", profileCopy);
-    on("profileApply", "click", profileApply);
     ORG_FIELDS.forEach(function (k) {
       on(k, "change", function () {
         var patch = {};
@@ -176,15 +174,27 @@
     var out = {};
     PROFILE_FIELDS.forEach(function (k) { if (s[k]) { out[k] = s[k]; } });
     var blob = btoa(unescape(encodeURIComponent(JSON.stringify(out))));
-    byId("profileBlob").value = blob;
-    byId("profileBlob").select();
-    try { document.execCommand("copy"); } catch (e) { /* user copies manually */ }
-    setStatus("info", "Profile code is in the box (and copied). Send it to your travelers.");
+    var box = byId("profileBlob");
+    box.value = blob;
+    box.select();
+    var done = function () {
+      setStatus("info", "Setup code generated and copied. Email it to your travelers \u2014 they paste it " +
+        "into \u201cI'm a traveler\u2026\u201d at the top of Setup.");
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(blob).then(done, function () {
+        try { document.execCommand("copy"); } catch (e) { /* select-and-copy by hand */ }
+        done();
+      });
+    } else {
+      try { document.execCommand("copy"); } catch (e) { /* select-and-copy by hand */ }
+      done();
+    }
   }
 
-  function profileApply() {
+  function profileApply(rawText) {
     try {
-      var raw = byId("profileBlob").value.trim();
+      var raw = String(rawText != null ? rawText : val("profileBlob")).trim();
       if (!raw) { setStatus("error", "Paste the profile code from your coordinator first."); return; }
       var p = JSON.parse(decodeURIComponent(escape(atob(raw))));
       var patch = {};

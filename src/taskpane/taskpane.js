@@ -142,6 +142,7 @@
     });
     on("submit", "click", submit);
     on("profileCopy", "click", profileCopy);
+    on("inviteSend", "click", sendInvites);
     ORG_FIELDS.forEach(function (k) {
       on(k, "change", function () {
         var patch = {};
@@ -344,18 +345,23 @@
 
     if (!configured) {
       h.textContent = "\ud83d\udc4b First time here?";
-      body.innerHTML = "If your travel coordinator sent you a <b>setup code</b>, paste it into " +
-        "Setup below \u2014 that is the entire setup. No code? Open <b>Coordinator setup</b> " +
-        "to connect the planner workbook yourself. Either way you only do this once.";
+      body.innerHTML = "If your travel coordinator has added you, everything you need is already " +
+        "in your mailbox \u2014 click below and Travel Desk sets itself up. If you're the " +
+        "coordinator, open Setup and connect your planner.";
+      var find = document.createElement("button");
+      find.className = "primary";
+      find.textContent = "Find my setup";
+      find.addEventListener("click", function () { findMySetup(); });
       var btn = document.createElement("button");
-      btn.textContent = "Open setup";
+      btn.textContent = "I'm the coordinator";
+      btn.style.marginLeft = "6px";
       btn.addEventListener("click", function () {
         var setup = byId("setup");
         setup.setAttribute("open", "open");
         try { setup.scrollIntoView({ behavior: "smooth", block: "start" }); }
         catch (e) { setup.scrollIntoView(); }
       });
-      el.appendChild(h); el.appendChild(body); el.appendChild(btn);
+      el.appendChild(h); el.appendChild(body); el.appendChild(find); el.appendChild(btn);
       return;
     }
     h.textContent = "\u2705 You're set up \u2014 here's the routine";
@@ -535,6 +541,81 @@
       values[idx.status] = "Booked";
       return true;
     }, "Marked booked here and in the shared planner.");
+  }
+
+  /** Coordinator: address people instead of handing out a code. */
+  async function sendInvites() {
+    var emails = TravelForm.extractEmails(val("inviteTo"));
+    if (!emails.length) {
+      byId("inviteInfo").textContent = "Add at least one email address first.";
+      return;
+    }
+    byId("inviteSend").disabled = true;
+    try {
+      var st = settings();
+      var out = {};
+      PROFILE_FIELDS.forEach(function (k) { if (st[k]) { out[k] = st[k]; } });
+      if (!out.wbUrl && !out.planners) {
+        byId("inviteInfo").textContent = "Connect your planner first — otherwise there's nothing to send.";
+        return;
+      }
+      var code = btoa(unescape(encodeURIComponent(JSON.stringify(out))));
+      var prof = Office.context.mailbox.userProfile || {};
+      setStatus("work", "Writing the invitation\u2026");
+      var token = await GraphData.getToken();
+      var draft = await GraphData.createDraft(token, emails,
+        TravelForm.setupSubject(st.orgName),
+        TravelForm.setupInviteHtml({
+          code: code, orgName: st.orgName,
+          coordName: prof.displayName, coordEmail: prof.emailAddress,
+        }));
+      byId("inviteInfo").textContent = "Invitation drafted for " + emails.length +
+        " traveler(s) — review it and press Send.";
+      setStatus("info", "Invitation ready in your Drafts for " + emails.join(", ") +
+        ". Nothing is sent until you press Send.");
+      try {
+        if (draft && draft.webLink) {
+          Office.context.ui.openBrowserWindow
+            ? Office.context.ui.openBrowserWindow(draft.webLink)
+            : window.open(draft.webLink, "_blank");
+        }
+      } catch (e) { /* it's in Drafts either way */ }
+    } catch (e) {
+      setStatus("error", "Couldn't write the invitation: " + ((e && e.message) || e));
+    } finally {
+      byId("inviteSend").disabled = false;
+    }
+  }
+
+  /** Traveller: let their own mailbox carry the setup to them. */
+  async function findMySetup() {
+    setStatus("work", "Looking for a setup from your coordinator\u2026");
+    try {
+      var token = await GraphData.getToken();
+      var msgs = await GraphData.setupInvites(token, "Travel Desk setup");
+      if (!msgs.length) {
+        setStatus("error", "No setup invitation found in your mailbox. Ask your coordinator to " +
+          "send one \u2014 or paste a setup code in Setup if you were given one.");
+        return;
+      }
+      // search results carry metadata only; fetch bodies newest-first
+      for (var i = 0; i < Math.min(msgs.length, 5); i++) {
+        msgs[i].body = await GraphData.messageBody(token, msgs[i].id);
+      }
+      var invite = TravelForm.pickInvite(msgs);
+      if (!invite) {
+        setStatus("error", "Found a setup message but no settings inside it — ask your " +
+          "coordinator to resend.");
+        return;
+      }
+      var from = ((invite.from || {}).emailAddress || {}).name ||
+                 ((invite.from || {}).emailAddress || {}).address || "your coordinator";
+      profileApply(TravelForm.extractSetupCode(invite.body));
+      setStatus("info", "Set up from " + from + "'s invitation. Fill in the form below and " +
+        "click Create travel request.");
+    } catch (e) {
+      setStatus("error", "Couldn't read your setup: " + ((e && e.message) || e));
+    }
   }
 
   function esc(s) {

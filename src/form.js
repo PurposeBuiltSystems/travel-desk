@@ -390,8 +390,77 @@
     });
   }
 
+  /* ------------------------------------------------------------------
+   * Setup by invitation. Copy-a-code-and-paste-it is the part coordinators
+   * dread explaining, so the coordinator addresses people instead and each
+   * traveller's own mailbox carries the setup to them. The code rides in a
+   * marker the add-in can find again; nothing here is secret (planner link,
+   * coordinator addresses, fiscal-year rules).
+   * ------------------------------------------------------------------ */
+
+  var SETUP_SUBJECT = "Travel Desk setup";
+  var CODE_OPEN = "[[TD-SETUP]]";
+  var CODE_CLOSE = "[[/TD-SETUP]]";
+
+  function setupSubject(orgName) {
+    var org = String(orgName || "").trim();
+    return SETUP_SUBJECT + (org ? " \u2014 " + org : "");
+  }
+
+  /** The invitation a coordinator sends. Readable first, machine-readable second. */
+  function setupInviteHtml(opts) {
+    opts = opts || {};
+    var org = esc(opts.orgName || "your organization");
+    var who = esc(opts.coordName || "Your travel coordinator");
+    return '<div style="font-family:Segoe UI,Arial,sans-serif;max-width:640px;color:#242424">' +
+      "<p>You've been set up to file travel requests for <strong>" + org + "</strong> " +
+      "using the Travel Desk add-in in Outlook.</p>" +
+      "<p><strong>To finish, open any email, click Travel Desk on the ribbon, and choose " +
+      "&ldquo;Find my setup&rdquo;.</strong> It reads this message and configures itself \u2014 " +
+      "the planner, the right addresses, and your fiscal-year rules. Nothing to copy or paste.</p>" +
+      "<p style=\"color:#616161;font-size:12px\">Keep this message; the add-in looks for it. " +
+      "The setup details below are just configuration \u2014 no passwords or personal data.</p>" +
+      '<div style="background:#f3f2f1;border-radius:6px;padding:8px;font-family:ui-monospace,monospace;' +
+      'font-size:11px;word-break:break-all;color:#616161">' +
+      CODE_OPEN + esc(opts.code || "") + CODE_CLOSE + "</div>" +
+      "<p style=\"color:#616161;font-size:12px\">Sent by " + who +
+      (opts.coordEmail ? " (" + esc(opts.coordEmail) + ")" : "") + ".</p>" +
+      "</div>";
+  }
+
+  /**
+   * Pull the code back out of an invitation. Mail clients wrap and re-encode
+   * bodies, so tolerate injected tags, entities and line breaks between the
+   * markers.
+   */
+  function extractSetupCode(body) {
+    var text = String(body || "");
+    var i = text.indexOf(CODE_OPEN);
+    var j = text.indexOf(CODE_CLOSE, i + 1);
+    if (i === -1 || j === -1) { return ""; }
+    return text.slice(i + CODE_OPEN.length, j)
+      .replace(/<[^>]*>/g, "")
+      .replace(/&amp;/g, "&")
+      .replace(/[^A-Za-z0-9+/=]/g, "");
+  }
+
+  /** Newest invitation that actually carries a code. */
+  function pickInvite(messages) {
+    var withCode = (messages || []).filter(function (m) {
+      return extractSetupCode(m.body || m.bodyPreview || "");
+    });
+    withCode.sort(function (a, b) {
+      return String(b.receivedDateTime || "").localeCompare(String(a.receivedDateTime || ""));
+    });
+    return withCode[0] || null;
+  }
+
   var api = {
     pickPlanner: pickPlanner,
+    setupSubject: setupSubject,
+    setupInviteHtml: setupInviteHtml,
+    extractSetupCode: extractSetupCode,
+    pickInvite: pickInvite,
     DEFAULT_PLANNER_HEADERS: DEFAULT_PLANNER_HEADERS,
     parseTravelers: parseTravelers,
     plannerRows: plannerRows,

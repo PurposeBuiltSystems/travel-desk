@@ -13,7 +13,7 @@
   <!-- JSZip: packages the generated planner workbook client-side -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-  <link rel="stylesheet" href="taskpane.css?v=19" />
+  <link rel="stylesheet" href="taskpane.css?v=20" />
 </head>
 <body>
   <header class="app-head">
@@ -126,8 +126,20 @@
     <label>Funding program label (blank to hide)
       <input id="fundingLabel" type="text" placeholder="e.g. TEWD, Grant, Program" />
     </label>
+    <details class="options" open>
+      <summary>Add your travelers</summary>
+      <p class="hint">Type or paste their email addresses — a pasted Outlook <b>To:</b> line works.
+         Travel Desk writes one invitation for you to review and send; each person then opens the
+         add-in, clicks <b>Find my setup</b>, and they're configured. Nothing to copy or paste.</p>
+      <label>Traveler emails
+        <textarea id="inviteTo" rows="2" placeholder="jane.doe@agency.gov; bob.roe@agency.gov"></textarea>
+      </label>
+      <button id="inviteSend" class="primary">Write the invitation</button>
+      <p id="inviteInfo" class="hint"></p>
+    </details>
+
     <details class="options">
-      <summary>Share this setup with your travelers</summary>
+      <summary>Or share a setup code by hand</summary>
       <p class="hint">Finish the setup above, then generate a code and email it to your travelers.
          They paste it into <b>&ldquo;I&rsquo;m a traveler&hellip;&rdquo;</b> at the top of Setup and they&rsquo;re done —
          they never see any of this.</p>
@@ -268,10 +280,10 @@
 
   <section id="status" class="status" hidden></section>
 
-  <script src="../form.js?v=19"></script>
-  <script src="../xlsxgen.js?v=19"></script>
-  <script src="../coord.js?v=19"></script>
-  <script src="../graph.js?v=19"></script>
-  <script src="taskpane.js?v=19"></script>
+  <script src="../form.js?v=20"></script>
+  <script src="../xlsxgen.js?v=20"></script>
+  <script src="../coord.js?v=20"></script>
+  <script src="../graph.js?v=20"></script>
+  <script src="taskpane.js?v=20"></script>
 </body>
 </html>

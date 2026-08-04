@@ -255,6 +255,25 @@
   // ---------- mail ----------
 
   /** Create the Travel Authorization email as a DRAFT (never sent). */
+  /**
+   * Setup invitations sitting in this user's mailbox. Searched by subject
+   * prefix so a traveller never has to find, open, or copy anything.
+   */
+  async function setupInvites(token, subjectPrefix) {
+    var res = await graphJson(token, "GET",
+      "/me/messages?$select=id,subject,from,receivedDateTime" +
+      "&$filter=" + encodeURIComponent("startswith(subject,'" +
+        String(subjectPrefix || "Travel Desk setup").replace(/'/g, "''") + "')") +
+      "&$orderby=receivedDateTime desc&$top=25");
+    return res.value || [];
+  }
+
+  /** Full body of one message (search results carry only metadata). */
+  async function messageBody(token, id) {
+    var m = await graphJson(token, "GET", "/me/messages/" + encodeURIComponent(id) + "?$select=body");
+    return (m && m.body && m.body.content) || "";
+  }
+
   async function createDraft(token, to, subject, html) {
     var body = {
       subject: subject,
@@ -263,8 +282,12 @@
     // An empty address is rejected outright (400 ErrorInvalidRecipients).
     // A third party with no billing contact on file, or a blank coordinator
     // address, should still get a draft — the user just fills the To line.
-    var addr = String(to || "").trim();
-    if (addr) { body.toRecipients = [{ emailAddress: { address: addr } }]; }
+    var list = (Array.isArray(to) ? to : [to])
+      .map(function (a) { return String(a || "").trim(); })
+      .filter(Boolean);
+    if (list.length) {
+      body.toRecipients = list.map(function (a) { return { emailAddress: { address: a } }; });
+    }
     return graphJson(token, "POST", "/me/messages", body);
   }
 
@@ -285,6 +308,8 @@
     updateTableRow: updateTableRow,
     authEmails: authEmails,
     createDraft: createDraft,
+    setupInvites: setupInvites,
+    messageBody: messageBody,
     bookingEmails: bookingEmails,
     _config: { clientId: CLIENT_ID },
   };

@@ -267,6 +267,40 @@ check("sheet names with quotes are escaped", G.headerRange("Bob's sheet", 2), "'
 check("ampersand in a header is escaped",
   G.buildWorkbook(["A & B"]).parts["xl/worksheets/sheet1.xml"].indexOf("A &amp; B") !== -1, true);
 
+/* ------------------- setup by invitation (no copy/paste) ------------------- */
+
+check("subject carries the org", F.setupSubject("Iowa DOT"), "Travel Desk setup \u2014 Iowa DOT");
+check("subject without an org", F.setupSubject(""), "Travel Desk setup");
+
+var theCode = "eyJjb29yZEVtYWlsIjoia2VyaUBkb3QuZ292In0=";
+var invite = F.setupInviteHtml({ code: theCode, orgName: "Iowa DOT",
+  coordName: "Keri Greenfield", coordEmail: "keri@dot.gov" });
+check("code round-trips out of the invitation", F.extractSetupCode(invite), theCode);
+check("invitation names the org", invite.indexOf("Iowa DOT") !== -1, true);
+check("invitation tells them what to click", invite.indexOf("Find my setup") !== -1, true);
+check("invitation names the sender", invite.indexOf("Keri Greenfield") !== -1, true);
+
+// mail clients wrap, re-encode and inject markup between the markers
+var mangled = invite.replace(theCode,
+  theCode.slice(0, 6) + '<span class="x">' + theCode.slice(6, 12) + "</span>\r\n   " + theCode.slice(12));
+check("survives injected markup and wrapping", F.extractSetupCode(mangled), theCode);
+check("a plain email yields nothing", F.extractSetupCode("Lunch on Friday?"), "");
+check("truncated marker yields nothing", F.extractSetupCode("[[TD-SETUP]]abc"), "");
+
+check("picks the newest invitation that has a code",
+  F.pickInvite([
+    { receivedDateTime: "2026-02-01", body: F.setupInviteHtml({ code: "b2xk" }) },
+    { receivedDateTime: "2026-08-01", body: F.setupInviteHtml({ code: "bmV3" }) },
+    { receivedDateTime: "2026-09-01", body: "<p>unrelated mail</p>" },
+  ]).receivedDateTime, "2026-08-01");
+check("no usable invitation -> null", F.pickInvite([{ receivedDateTime: "2026-01-01", body: "hi" }]), null);
+check("empty inbox -> null", F.pickInvite([]), null);
+
+// the code an invitation carries must restore through the same path a paste does
+check("invitation code decodes to real settings",
+  JSON.parse(decodeURIComponent(escape(Buffer.from(F.extractSetupCode(invite), "base64").toString("binary")))).coordEmail,
+  "keri@dot.gov");
+
 if (failures) {
   console.error("\n" + failures + " form test(s) FAILED");
   process.exit(1);

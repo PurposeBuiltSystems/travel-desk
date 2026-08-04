@@ -148,6 +148,23 @@
     };
   }
 
+  /** Every data row of the planner table — the coordinator's whole picture. */
+  async function tableRows(token, ref, tableName) {
+    var res = await graphJson(token, "GET",
+      wbBase(ref) + "/tables/" + encodeURIComponent(tableName) + "/dataBodyRange?$select=values");
+    return (res && res.values) || [];
+  }
+
+  /** Travel Authorization emails the coordinator has received. */
+  async function authEmails(token, daysBack) {
+    var since = new Date(Date.now() - (daysBack || 365) * 864e5).toISOString();
+    var res = await graphJson(token, "GET",
+      "/me/messages?$select=subject,receivedDateTime,from,webLink" +
+      "&$filter=receivedDateTime ge " + since +
+      " and startswith(subject,'Travel Auth')&$top=200");
+    return res.value || [];
+  }
+
   /** Append one row to the planner table. */
   async function addTableRow(token, ref, tableName, rowValues) {
     return graphJson(token, "POST",
@@ -237,6 +254,8 @@
     uploadWorkbook: uploadWorkbook,
     tableHeaders: tableHeaders,
     addTableRow: addTableRow,
+    tableRows: tableRows,
+    authEmails: authEmails,
     createDraft: createDraft,
     bookingEmails: bookingEmails,
     _config: { clientId: CLIENT_ID },

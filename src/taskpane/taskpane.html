@@ -13,7 +13,7 @@
   <!-- JSZip: packages the generated planner workbook client-side -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-  <link rel="stylesheet" href="taskpane.css?v=13" />
+  <link rel="stylesheet" href="taskpane.css?v=14" />
 </head>
 <body>
   <header class="app-head">
@@ -31,6 +31,19 @@
     </details>
   </section>
 
+  <section id="coord" class="options" style="margin-top:8px" hidden>
+    <details>
+      <summary>🗂 Coordinator view — everyone's travel</summary>
+      <p class="hint">Reads the shared planner, not just your own trips: what's coming up, who still hasn't booked, where the money is going, and which authorizations and planner rows don't match.</p>
+      <div class="row2">
+        <label>Fiscal year (blank = all) <input id="coordFy" type="text" placeholder="SFY27" /></label>
+        <label>&nbsp;<button id="coordLoad" class="primary" style="width:100%">Load everyone's travel</button></label>
+      </div>
+      <label class="modes" style="margin-top:4px"><input id="coordReconcile" type="checkbox" checked /> Also check my inbox for Travel Authorization emails and flag mismatches</label>
+      <div id="coordView" class="hint">Not loaded yet.</div>
+    </details>
+  </section>
+
   <section id="reimb" class="options" style="margin-top:8px">
     <details>
       <summary>💵 Third-party reimbursements owed</summary>
@@ -42,12 +55,12 @@
   <details id="setup" class="options">
     <summary>Setup (once) — travelers: just paste your code</summary>
     <div class="fastpath">
-      <b>Traveler with a setup code from your coordinator?</b> Paste it here and you're done:
+      <b>I'm a traveler and my coordinator sent me a setup code.</b> Paste it here and you're done — nothing else on this page applies to you:
       <textarea id="profileBlobFast" rows="2" placeholder="Setup code"></textarea>
       <button id="profileApplyFast" class="primary">Apply my code</button>
     </div>
     <details class="options">
-      <summary>Coordinator setup (workbooks, fiscal years, org settings)</summary>
+      <summary>I'm the coordinator — set this up for my team</summary>
     <div class="fastpath" style="margin-bottom:10px">
       <b>No planner yet?</b> Create one with the right columns already set up.
       <div class="row2">
@@ -254,9 +267,10 @@
 
   <section id="status" class="status" hidden></section>
 
-  <script src="../form.js?v=13"></script>
-  <script src="../xlsxgen.js?v=13"></script>
-  <script src="../graph.js?v=13"></script>
-  <script src="taskpane.js?v=13"></script>
+  <script src="../form.js?v=14"></script>
+  <script src="../xlsxgen.js?v=14"></script>
+  <script src="../coord.js?v=14"></script>
+  <script src="../graph.js?v=14"></script>
+  <script src="taskpane.js?v=14"></script>
 </body>
 </html>

@@ -46,7 +46,7 @@
     Object.keys(patch).forEach(function (k) { s[k] = patch[k]; });
     Office.context.roamingSettings.set(SETTINGS_KEY, JSON.stringify(s));
     Office.context.roamingSettings.saveAsync(function () {});
-    try { renderFirstRun(); } catch (e) { /* pre-DOM calls are fine */ }
+    try { renderFirstRun(); refreshCoordVisibility(); } catch (e) { /* pre-DOM calls are fine */ }
     return s;
   }
 
@@ -98,6 +98,7 @@
     on("connect", "click", connectWorkbook);
     on("makeTable", "click", makeTable);
     on("createPlanner", "click", createPlanner);
+    on("coordLoad", "click", coordLoad);
     on("wbBrowse", "click", browseWorkbooks);
     on("wbSearch", "keydown", function (ev) {
       if (ev.key === "Enter") { ev.preventDefault(); browseWorkbooks(); }
@@ -112,7 +113,7 @@
     // returning users: lead with their trips; first-timers see the form
     var tripsEl = byId("trips").querySelector("details");
     if (trips().length === 0 && tripsEl) { tripsEl.removeAttribute("open"); }
-    try { renderReimb(); renderTrips(); renderFirstRun(); }
+    try { renderReimb(); renderTrips(); renderFirstRun(); refreshCoordVisibility(); }
     catch (e) { /* stale cached page — wiring below still binds */ }
     on("savePlanner", "click", savePlanner);
     on("plannerList", "click", function (ev) {
@@ -344,6 +345,122 @@
       "<b>Create travel request</b> at the bottom. Only the fields marked " +
       "<i>required</i> must be filled. The email opens as a draft for you to review and send.";
     el.appendChild(h); el.appendChild(body);
+  }
+
+  /** The coordinator section only makes sense once a planner is connected —
+   *  travellers who pasted a profile code never see it. */
+  function refreshCoordVisibility() {
+    var el = byId("coord");
+    if (!el) { return; }
+    var st = settings();
+    el.hidden = !(st.tableName && (st.wbUrl || (st.planners && Object.keys(st.planners).length)));
+  }
+
+  function money0(n) {
+    return "$" + String(Math.round(n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
+
+  /**
+   * Load the whole planner and show the coordinator's working set. This is
+   * the one view that reads everybody's rows rather than the signed-in
+   * user's own trips.
+   */
+  async function coordLoad() {
+    var st = settings();
+    var ref = wbRef || (st.wbUrl ? null : null);
+    byId("coordLoad").disabled = true;
+    try {
+      var token = await GraphData.getToken();
+      if (!ref) {
+        setStatus("work", "Opening the planner\u2026");
+        ref = await GraphData.resolveWorkbook(token, st.wbUrl);
+      }
+      var tableName = st.tableName || (await GraphData.listTables(token, ref))[0];
+      if (!tableName) { throw new Error("no table on that workbook yet"); }
+
+      setStatus("work", "Reading everyone's trips\u2026");
+      var headers = await GraphData.tableHeaders(token, ref, tableName);
+      var rows = await GraphData.tableRows(token, ref, tableName);
+      var records = TravelCoord.mapRows(headers, rows);
+      var sum = TravelCoord.summarize(records, { fy: val("coordFy").trim() });
+
+      var recon = null;
+      if (byId("coordReconcile").checked) {
+        setStatus("work", "Checking your inbox for authorizations\u2026");
+        try {
+          var mails = await GraphData.authEmails(token, 365);
+          recon = TravelCoord.reconcile(records, mails.map(function (m) { return m.subject; }));
+        } catch (e) { /* reconciliation is a bonus; the planner view still stands */ }
+      }
+      renderCoord(sum, recon);
+      setStatus("info", sum.count + " trip(s) in the planner \u00b7 " + money0(sum.totalCost) +
+        " total \u00b7 " + sum.unbooked.length + " upcoming still unbooked.");
+    } catch (e) {
+      setStatus("error", "Couldn't load the planner: " + ((e && e.message) || e));
+    } finally {
+      byId("coordLoad").disabled = false;
+    }
+  }
+
+  function renderCoord(sum, recon) {
+    var host = byId("coordView");
+    host.innerHTML = "";
+    function section(title) {
+      var h = document.createElement("p");
+      h.style.cssText = "font-weight:700;margin:12px 0 4px";
+      h.textContent = title;
+      host.appendChild(h);
+      return h;
+    }
+    function line(text, tone) {
+      var p = document.createElement("p");
+      p.style.cssText = "margin:2px 0;font-size:12.5px" +
+        (tone === "warn" ? ";color:var(--err-fg);font-weight:600" : "");
+      p.textContent = text;
+      host.appendChild(p);
+    }
+    function trip(r) {
+      return (r.date || "(no date)") + " \u00b7 " + r.traveler +
+        (r.division ? " (" + r.division + ")" : "") + " \u00b7 " + r.event +
+        (r.cost ? " \u00b7 " + money0(r.cost) : "");
+    }
+
+    section("Still to book (" + sum.unbooked.length + ")");
+    if (!sum.unbooked.length) { line("Everything upcoming is booked."); }
+    sum.unbooked.slice(0, 15).forEach(function (r) { line(trip(r), "warn"); });
+
+    section("Coming up (" + sum.upcoming.length + ")");
+    if (!sum.upcoming.length) { line("Nothing upcoming in this view."); }
+    sum.upcoming.slice(0, 15).forEach(function (r) { line(trip(r)); });
+
+    section("Spend by division");
+    sum.byDivision.forEach(function (d) {
+      line(d.division + " \u00b7 " + d.trips + " trip(s) \u00b7 " + money0(d.cost));
+    });
+    if (sum.byFy.length > 1) {
+      section("By fiscal year");
+      sum.byFy.forEach(function (f) { line(f.fy + " \u00b7 " + f.trips + " trip(s) \u00b7 " + money0(f.cost)); });
+    }
+
+    section("Finished trips with a third party owing (" + sum.endedThirdParty.length + ")");
+    if (!sum.endedThirdParty.length) { line("Nothing outstanding."); }
+    sum.endedThirdParty.slice(0, 15).forEach(function (r) {
+      line(trip(r) + " \u00b7 " + r.thirdParty, "warn");
+    });
+
+    if (recon) {
+      section("Authorizations vs planner");
+      if (!recon.rowsWithoutAuth.length && !recon.authsWithoutRow.length) {
+        line("Every planner row has a matching authorization email. \u2713");
+      }
+      recon.rowsWithoutAuth.slice(0, 15).forEach(function (r) {
+        line("No authorization email found for: " + trip(r), "warn");
+      });
+      recon.authsWithoutRow.slice(0, 15).forEach(function (p) {
+        line("Authorized but never added to the planner: " + p.last + " \u00b7 " + p.event +
+          (p.date ? " \u00b7 " + p.date : ""), "warn");
+      });
+    }
   }
 
   function esc(s) {

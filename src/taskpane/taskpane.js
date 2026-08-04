@@ -5,7 +5,7 @@
  * form, click "Create travel request" — the add-in creates the Travel
  * Authorization email draft AND appends the matching planner row.
  */
-/* global Office, GraphData, TravelForm, document */
+/* global Office, GraphData, TravelForm, TravelCoord, XlsxGen, JSZip, document, window */
 (function () {
   "use strict";
 

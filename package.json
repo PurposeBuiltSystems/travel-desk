@@ -1,0 +1,17 @@
+{
+  "name": "travel-desk",
+  "version": "1.0.0",
+  "description": "Outlook add-in that turns one travel form into the authorization email and the shared planner row, then tracks bookings and third-party reimbursements.",
+  "private": true,
+  "scripts": {
+    "check": "node tools/check-undeclared.js",
+    "test": "node tools/check-undeclared.js && node test/coord.test.js && node test/form.test.js",
+    "validate": "office-addin-manifest validate manifest.xml"
+  },
+  "author": "Matthew Miller",
+  "license": "MIT",
+  "devDependencies": {
+    "acorn": "^8.16.0",
+    "office-addin-manifest": "^2.0.4"
+  }
+}

@@ -99,6 +99,7 @@
     on("makeTable", "click", makeTable);
     on("createPlanner", "click", createPlanner);
     on("coordLoad", "click", coordLoad);
+    on("closeSubmit", "click", closeOutTrip);
     on("wbBrowse", "click", browseWorkbooks);
     on("wbSearch", "keydown", function (ev) {
       if (ev.key === "Enter") { ev.preventDefault(); browseWorkbooks(); }
@@ -380,6 +381,8 @@
     el.hidden = !(st.tableName && (st.wbUrl || (st.planners && Object.keys(st.planners).length)));
   }
 
+  var coordRecords = [];
+
   function money0(n) {
     return "$" + String(Math.round(n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   }
@@ -406,6 +409,7 @@
       var headers = await GraphData.tableHeaders(token, ref, tableName);
       var rows = await GraphData.tableRows(token, ref, tableName);
       var records = TravelCoord.mapRows(headers, rows);
+      coordRecords = records;
       var sum = TravelCoord.summarize(records, { fy: val("coordFy").trim() });
 
       var recon = null;
@@ -424,6 +428,40 @@
     } finally {
       byId("coordLoad").disabled = false;
     }
+  }
+
+  /** One queue row with its approve action. */
+  function approvalRow(host, r, stage) {
+    var box = document.createElement("div");
+    box.style.cssText = "border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:6px 0";
+    var head = document.createElement("div");
+    var detail = (r.date || "(no date)") + " \u00b7 " + r.traveler +
+      (r.division ? " (" + r.division + ")" : "") + " \u00b7 " + r.event;
+    if (stage === "close") {
+      detail += " \u00b7 est " + money0(r.cost) + " \u2192 actual " + money0(r.actualCost) +
+        (r.variancePct != null ? " (" + (r.variancePct > 0 ? "+" : "") + r.variancePct + "%)" : "");
+    } else if (r.cost) {
+      detail += " \u00b7 " + money0(r.cost);
+    }
+    head.textContent = detail;
+    if (r.overBudget) { head.style.cssText = "color:var(--err-fg);font-weight:600"; }
+    box.appendChild(head);
+
+    var btn = document.createElement("button");
+    btn.className = "primary";
+    btn.style.marginTop = "6px";
+    btn.textContent = stage === "close" ? "Accept actuals" : "Approve travel";
+    btn.addEventListener("click", async function () {
+      btn.disabled = true;
+      var me = (Office.context.mailbox.userProfile || {}).displayName || "";
+      var ok = await approveRow({
+        name: r.traveler, event: r.event, eventStart: r.date,
+      }, stage, me);
+      if (ok) { btn.textContent = stage === "close" ? "Accepted \u2713" : "Approved \u2713"; }
+      else { btn.disabled = false; }
+    });
+    box.appendChild(btn);
+    host.appendChild(box);
   }
 
   function renderCoord(sum, recon) {
@@ -448,6 +486,33 @@
         (r.division ? " (" + r.division + ")" : "") + " \u00b7 " + r.event +
         (r.cost ? " \u00b7 " + money0(r.cost) : "");
     }
+
+    var q = TravelCoord.queues(sum ? coordRecords : []);
+    var bt = TravelCoord.budgetTruth(coordRecords, { fy: val("coordFy").trim() });
+
+    section("Waiting on you \u2014 approve travel (" + q.awaitingApproval.length + ")");
+    if (!q.awaitingApproval.length) { line("Nothing awaiting approval."); }
+    q.awaitingApproval.slice(0, 15).forEach(function (r) {
+      approvalRow(host, r, "travel");
+    });
+
+    section("Waiting on you \u2014 review actual costs (" + q.awaitingClose.length + ")");
+    if (!q.awaitingClose.length) { line("No closed-out trips to review."); }
+    q.awaitingClose.slice(0, 15).forEach(function (r) {
+      approvalRow(host, r, "close");
+    });
+
+    section("Budget truth" + (val("coordFy").trim() ? " \u00b7 " + val("coordFy").trim() : ""));
+    if (bt.tripsWithActuals) {
+      line("Of " + money0(bt.estimatedClosed) + " estimated on " + bt.tripsWithActuals +
+        " completed trip(s), actual spend was " + money0(bt.actual) +
+        " (" + (bt.variancePct > 0 ? "+" : "") + bt.variancePct + "%).",
+        bt.variancePct > 20 ? "warn" : null);
+    } else {
+      line("No completed trips with actual costs yet.");
+    }
+    line(money0(bt.estimatedAll - bt.estimatedClosed) + " still committed across " +
+      bt.tripsWithout + " trip(s) that haven't been closed out.");
 
     section("Still to book (" + sum.unbooked.length + ")");
     if (!sum.unbooked.length) { line("Everything upcoming is booked."); }
@@ -533,6 +598,37 @@
         ((e && e.message) || e) + "). You can change it in the spreadsheet.");
       return false;
     }
+  }
+
+  /**
+   * Traveller closes out a trip: real costs replace the guess on the SAME
+   * planner row. The estimate is deliberately left in place — the gap
+   * between the two is the number that defends next year's budget.
+   */
+  async function submitActuals(trip, actualTotal, note) {
+    return writeBackRow(trip, function (values, idx) {
+      if (idx.actualCost == null) { return false; }   // planner lacks the column
+      values[idx.actualCost] = String(Math.round(actualTotal));
+      if (idx.status != null) { values[idx.status] = TravelForm.STATUS.ACTUALS; }
+      if (note && idx.comments != null) {
+        values[idx.comments] = (values[idx.comments] ? values[idx.comments] + " | " : "") + note;
+      }
+      return true;
+    }, "Actual costs recorded on the planner — your coordinator sees them next.");
+  }
+
+  /** Coordinator records an approval on the row (recorded, not enforced). */
+  async function approveRow(trip, stage, approver) {
+    var status = stage === "close" ? TravelForm.STATUS.CLOSED : TravelForm.STATUS.APPROVED;
+    return writeBackRow(trip, function (values, idx) {
+      if (idx.status == null) { return false; }
+      values[idx.status] = status;
+      if (idx.approvedBy != null) { values[idx.approvedBy] = approver || ""; }
+      if (idx.approvedDate != null) {
+        values[idx.approvedDate] = new Date().toISOString().slice(0, 10);
+      }
+      return true;
+    }, stage === "close" ? "Closed out on the planner." : "Approved on the planner.");
   }
 
   function markBookedEverywhere(trip) {
@@ -734,9 +830,50 @@
     });
   }
 
+  /** Keep the close-out picker in step with the traveller's own trips. */
+  function renderCloseOptions() {
+    var sel = byId("closeTrip");
+    if (!sel) { return; }
+    var list = trips();
+    sel.innerHTML = "";
+    var o0 = document.createElement("option");
+    o0.value = "";
+    o0.textContent = list.length ? "Pick one of your trips\u2026" : "No trips filed yet";
+    sel.appendChild(o0);
+    list.slice().reverse().forEach(function (t) {
+      var o = document.createElement("option");
+      o.value = t.id;
+      o.textContent = (t.event || "trip") + (t.eventStart ? " \u00b7 " + t.eventStart : "");
+      sel.appendChild(o);
+    });
+  }
+
+  async function closeOutTrip() {
+    var id = val("closeTrip");
+    var amount = Number(val("closeActual"));
+    if (!id) { setStatus("error", "Pick which trip you're closing out."); return; }
+    if (!amount || amount <= 0) { setStatus("error", "Enter what the trip actually cost."); return; }
+    var trip = trips().filter(function (t) { return t.id === id; })[0];
+    if (!trip) { setStatus("error", "That trip is no longer in your list."); return; }
+    byId("closeSubmit").disabled = true;
+    try {
+      var ok = await submitActuals(trip, amount, val("closeNote").trim());
+      if (ok) {
+        byId("closeActual").value = "";
+        byId("closeNote").value = "";
+      } else {
+        setStatus("error", "Couldn't find your row, or the planner has no \u201cActual cost\u201d " +
+          "column yet — ask your coordinator to add one (Setup can do it).");
+      }
+    } finally {
+      byId("closeSubmit").disabled = false;
+    }
+  }
+
   function renderTrips() {
     var el = byId("tripsList");
     if (!el) { return; }
+    renderCloseOptions();
     var list = trips();
     if (!list.length) { el.innerHTML = "No requests tracked yet \u2014 submit one and it appears here."; return; }
     el.innerHTML = list.slice().reverse().map(function (t, ri) {

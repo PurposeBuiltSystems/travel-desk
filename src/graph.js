@@ -192,6 +192,20 @@
       "/rows/itemAt(index=" + Number(index) + ")", { values: [values] });
   }
 
+  /** Column names on a table (to see whether the lifecycle columns exist). */
+  async function tableColumns(token, ref, tableName) {
+    var res = await graphJson(token, "GET",
+      wbBase(ref) + "/tables/" + encodeURIComponent(tableName) + "/columns?$select=name");
+    return (res.value || []).map(function (c) { return c.name; });
+  }
+
+  /** Add a column to an existing planner table (for planners built before
+   *  close-out existed). Appends at the end so nothing shifts. */
+  async function addTableColumn(token, ref, tableName, name) {
+    return graphJson(token, "POST",
+      wbBase(ref) + "/tables/" + encodeURIComponent(tableName) + "/columns", { name: name });
+  }
+
   /** Append one row to the planner table. */
   async function addTableRow(token, ref, tableName, rowValues) {
     return graphJson(token, "POST",
@@ -308,6 +322,8 @@
     addTableRow: addTableRow,
     tableRows: tableRows,
     updateTableRow: updateTableRow,
+    tableColumns: tableColumns,
+    addTableColumn: addTableColumn,
     authEmails: authEmails,
     createDraft: createDraft,
     setupInvites: setupInvites,

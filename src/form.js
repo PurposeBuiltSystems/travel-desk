@@ -97,6 +97,12 @@
     return (headers || []).map(function (h) {
       var k = String(h || "").toLowerCase();
       if (!k) { return ""; }
+      // These are filled later in the trip's life (close-out and approval),
+      // never when the request is first filed. They must be tested FIRST:
+      // "Approved date" contains "date" and "Actual cost" contains "cost",
+      // so the generic tests below would otherwise claim them.
+      if (k.indexOf("actual") !== -1) { return ""; }
+      if (k.indexOf("approved") !== -1) { return ""; }
       if (k.indexOf("event") !== -1 || k.indexOf("conference") !== -1) { return model.event || ""; }
       if (k.indexOf("city") !== -1 || k.indexOf("location") !== -1 || k.indexOf("destination") !== -1) { return model.location || ""; }
       if (k.indexOf("start") !== -1 || k.indexOf("date") !== -1) { return model.eventStart || model.departDate || ""; }
@@ -343,8 +349,55 @@
   /** Columns a generated planner starts with — chosen so every one of them
    *  is filled by the header matcher above. */
   var DEFAULT_PLANNER_HEADERS = ["Traveler", "Division", "Bureau", "Event", "Destination",
-    "Start date", "Role", "Estimated cost", "% Reimbursed", "3rd Party", "Funding",
-    "Fiscal year", "Status", "Comments", "Approver"];
+    "Start date", "Role", "Estimated cost", "Actual cost", "% Reimbursed", "3rd Party",
+    "Funding", "Fiscal year", "Status", "Approved by", "Approved date", "Comments", "Approver"];
+
+  /* ------------------------------------------------------------------
+   * A trip is one row that moves through states — never two rows, or the
+   * division totals count the same trip twice. The estimate is what gets
+   * authorised; the actual is what it really cost. Keeping both on the row
+   * makes the variance visible, and the variance is what defends next
+   * year's budget request.
+   *
+   * The add-in RECORDS approvals; it cannot enforce them. There is no
+   * backend to gate anything, and pretending otherwise would be dishonest
+   * to anyone relying on it.
+   * ------------------------------------------------------------------ */
+  var STATUS = {
+    REQUESTED: "Requested",           // traveller filed an estimate
+    APPROVED: "Approved",             // coordinator authorised the trip
+    BOOKED: "Booked",                 // travel arranged
+    TRAVELED: "Traveled",             // trip happened, actuals not in yet
+    ACTUALS: "Actuals submitted",     // traveller entered real costs
+    CLOSED: "Closed",                 // coordinator accepted the actuals
+    DECLINED: "Not approved",
+  };
+
+  /** Does this status mean the trip is authorised to happen? */
+  function isAuthorized(status) {
+    var s = String(status || "").toLowerCase();
+    return ["approved", "booked", "traveled", "actuals submitted", "closed"]
+      .indexOf(s) !== -1;
+  }
+
+  /** Estimate vs actual. Returns null when either side is unknown. */
+  function variance(estimate, actual) {
+    var e = num(estimate), a = num(actual);
+    if (!e || !a) { return null; }
+    return { delta: a - e, pct: Math.round(((a - e) / e) * 100) };
+  }
+
+  /**
+   * How much attention a closed-out trip deserves. Small drift is noise;
+   * a big overrun is the thing a coordinator actually needs to see.
+   */
+  function varianceFlag(estimate, actual, tolerancePct) {
+    var v = variance(estimate, actual);
+    if (!v) { return "unknown"; }
+    var tol = tolerancePct == null ? 20 : tolerancePct;
+    if (Math.abs(v.pct) <= tol) { return "ok"; }
+    return v.pct > 0 ? "over" : "under";
+  }
 
   /**
    * "Other travelers" box -> structured travelers. One per line:
@@ -457,6 +510,10 @@
 
   var api = {
     pickPlanner: pickPlanner,
+    STATUS: STATUS,
+    isAuthorized: isAuthorized,
+    variance: variance,
+    varianceFlag: varianceFlag,
     setupSubject: setupSubject,
     setupInviteHtml: setupInviteHtml,
     extractSetupCode: extractSetupCode,

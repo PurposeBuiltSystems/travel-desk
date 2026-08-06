@@ -257,7 +257,7 @@ check("parseTravelers on empty input", F.parseTravelers("").length, 0);
 
 var wbg = G.buildWorkbook(MH, "Planner");
 check("five OOXML parts", Object.keys(wbg.parts).length, 5);
-check("header range matches column count", wbg.range, "'Planner'!A1:O1");
+check("header range matches column count (18 cols -> R)", wbg.range, "'Planner'!A1:R1");
 check("headers land in the sheet",
   wbg.parts["xl/worksheets/sheet1.xml"].indexOf("<t xml:space=\"preserve\">Traveler</t>") !== -1, true);
 check("sheet name in workbook.xml",

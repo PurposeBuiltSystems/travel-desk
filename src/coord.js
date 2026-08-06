@@ -28,6 +28,11 @@
       var k = low(h);
       if (!k) { return; }
       function set(f) { if (idx[f] == null) { idx[f] = i; } }
+      // same precedence trap as the writer: "Actual cost" contains "cost",
+      // "Approved date" contains "date" — claim them before the generic tests
+      if (k.indexOf("actual") !== -1) { return set("actualCost"); }
+      if (k.indexOf("approved by") !== -1) { return set("approvedBy"); }
+      if (k.indexOf("approved") !== -1) { return set("approvedDate"); }
       if (k.indexOf("event") !== -1 || k.indexOf("conference") !== -1) { return set("event"); }
       if (k.indexOf("city") !== -1 || k.indexOf("location") !== -1 || k.indexOf("destination") !== -1) { return set("destination"); }
       if (k.indexOf("start") !== -1 || k.indexOf("date") !== -1) { return set("date"); }
@@ -59,6 +64,8 @@
         traveler: get("traveler"), division: get("division"), bureau: get("bureau"),
         event: get("event"), destination: get("destination"), date: get("date"),
         role: get("role"), cost: num(get("cost")), pctReimb: num(get("pctReimb")),
+        actualCost: num(get("actualCost")), approvedBy: get("approvedBy"),
+        approvedDate: get("approvedDate"),
         thirdParty: get("thirdParty"), funding: get("funding"), fy: get("fy"),
         status: get("status"), comments: get("comments"),
       };
@@ -149,6 +156,72 @@
     };
   }
 
+  /**
+   * The coordinator's two queues. This is the whole point of the lifecycle:
+   * instead of reading an inbox, she works two short lists.
+   *
+   *  - awaitingApproval: a traveller filed an estimate; nobody authorised it
+   *  - awaitingClose:    the trip happened and real costs are in, unreviewed
+   *
+   * Over-budget close-outs sort first, because a 40% overrun is the one a
+   * coordinator actually needs to look at.
+   */
+  function queues(records, opts) {
+    opts = opts || {};
+    var tol = opts.tolerancePct == null ? 20 : opts.tolerancePct;
+    var awaitingApproval = [], awaitingClose = [];
+    (records || []).forEach(function (r) {
+      var st = low(r.status);
+      if (st === "requested" || st === "") {
+        if (r.traveler || r.event) { awaitingApproval.push(r); }
+      } else if (st === "actuals submitted") {
+        var e = r.cost, a = r.actualCost;
+        var pct = (e && a) ? Math.round(((a - e) / e) * 100) : null;
+        r.variancePct = pct;
+        r.overBudget = pct != null && pct > tol;
+        awaitingClose.push(r);
+      }
+    });
+    var byDate = function (a, b) { return (dayMs(a.date) || 0) - (dayMs(b.date) || 0); };
+    awaitingApproval.sort(byDate);
+    awaitingClose.sort(function (a, b) {
+      if (a.overBudget !== b.overBudget) { return a.overBudget ? -1 : 1; }
+      return Math.abs(b.variancePct || 0) - Math.abs(a.variancePct || 0);
+    });
+    return { awaitingApproval: awaitingApproval, awaitingClose: awaitingClose };
+  }
+
+  /**
+   * Estimate vs actual — the number that defends next year's request.
+   *
+   * The variance is computed ONLY over trips that have actuals. Comparing
+   * every estimate against the subset of actuals that happen to exist looks
+   * like a huge underspend and means nothing; committed money for trips that
+   * haven't happened yet is reported separately, as its own figure.
+   */
+  function budgetTruth(records, opts) {
+    opts = opts || {};
+    var estimatedAll = 0, estimatedClosed = 0, actual = 0, closed = 0, open = 0;
+    (records || []).filter(function (r) {
+      return !opts.fy || low(r.fy) === low(opts.fy);
+    }).forEach(function (r) {
+      estimatedAll += r.cost;
+      if (r.actualCost) { estimatedClosed += r.cost; actual += r.actualCost; closed++; }
+      else { open++; }
+    });
+    return {
+      estimatedAll: estimatedAll,          // everything committed this year
+      estimatedClosed: estimatedClosed,    // the estimates we can actually judge
+      actual: actual,
+      tripsWithActuals: closed,
+      tripsWithout: open,
+      // like-for-like: only trips where both numbers exist
+      variance: closed ? actual - estimatedClosed : null,
+      variancePct: (closed && estimatedClosed)
+        ? Math.round(((actual - estimatedClosed) / estimatedClosed) * 100) : null,
+    };
+  }
+
   /* ------------------------------------------------------- reconciliation */
 
   function slug(s) { return low(s).replace(/[^a-z0-9]+/g, ""); }
@@ -230,6 +303,7 @@
   var api = {
     fieldIndex: fieldIndex, mapRows: mapRows, summarize: summarize,
     findRowIndex: findRowIndex, markSettled: markSettled, isSettled: isSettled,
+    queues: queues, budgetTruth: budgetTruth,
     reconcile: reconcile, parseAuthSubject: parseAuthSubject,
     lastNameOf: lastNameOf, hasThirdParty: hasThirdParty, isBooked: isBooked,
   };

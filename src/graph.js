@@ -264,7 +264,9 @@
       "/me/messages?$select=id,subject,from,receivedDateTime" +
       "&$filter=" + encodeURIComponent("startswith(subject,'" +
         String(subjectPrefix || "Travel Desk setup").replace(/'/g, "''") + "')") +
-      "&$orderby=receivedDateTime desc&$top=25");
+      // NO $orderby: Graph rejects it alongside a startswith() filter with
+      // "InefficientFilter". pickInvite() sorts newest-first client-side.
+      "&$top=50");
     return res.value || [];
   }
 

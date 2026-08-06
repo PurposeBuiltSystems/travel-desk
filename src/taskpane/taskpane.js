@@ -450,14 +450,14 @@
     var btn = document.createElement("button");
     btn.className = "primary";
     btn.style.marginTop = "6px";
-    btn.textContent = stage === "close" ? "Accept actuals" : "Approve travel";
+    btn.textContent = stage === "close" ? "Mark seen" : "Approve travel";
     btn.addEventListener("click", async function () {
       btn.disabled = true;
       var me = (Office.context.mailbox.userProfile || {}).displayName || "";
       var ok = await approveRow({
         name: r.traveler, event: r.event, eventStart: r.date,
       }, stage, me);
-      if (ok) { btn.textContent = stage === "close" ? "Accepted \u2713" : "Approved \u2713"; }
+      if (ok) { btn.textContent = stage === "close" ? "Seen \u2713" : "Approved \u2713"; }
       else { btn.disabled = false; }
     });
     box.appendChild(btn);
@@ -487,8 +487,23 @@
         (r.cost ? " \u00b7 " + money0(r.cost) : "");
     }
 
-    var q = TravelCoord.queues(sum ? coordRecords : []);
+    var q = TravelCoord.queues(coordRecords);
     var bt = TravelCoord.budgetTruth(coordRecords, { fy: val("coordFy").trim() });
+
+    // The gauge first: the whole point is "is travel costing roughly what we
+    // planned", and that answer should not sit below two work queues.
+    section("Gauge" + (val("coordFy").trim() ? " \u00b7 " + val("coordFy").trim() : ""));
+    if (bt.tripsWithActuals) {
+      line("Planned " + money0(bt.estimatedClosed) + " on " + bt.tripsWithActuals +
+        " completed trip(s); actually spent " + money0(bt.actual) + " \u2014 " +
+        (bt.variancePct === 0 ? "on the nose."
+          : Math.abs(bt.variancePct) + "% " + (bt.variancePct > 0 ? "over." : "under.")),
+        Math.abs(bt.variancePct) > 20 ? "warn" : null);
+    } else {
+      line("No completed trips yet \u2014 the gauge fills in as trips are closed out.");
+    }
+    line(money0(bt.estimatedAll - bt.estimatedClosed) + " planned on " + bt.tripsWithout +
+      " trip(s) still to come.");
 
     section("Waiting on you \u2014 approve travel (" + q.awaitingApproval.length + ")");
     if (!q.awaitingApproval.length) { line("Nothing awaiting approval."); }
@@ -496,23 +511,13 @@
       approvalRow(host, r, "travel");
     });
 
-    section("Waiting on you \u2014 review actual costs (" + q.awaitingClose.length + ")");
-    if (!q.awaitingClose.length) { line("No closed-out trips to review."); }
-    q.awaitingClose.slice(0, 15).forEach(function (r) {
-      approvalRow(host, r, "close");
-    });
-
-    section("Budget truth" + (val("coordFy").trim() ? " \u00b7 " + val("coordFy").trim() : ""));
-    if (bt.tripsWithActuals) {
-      line("Of " + money0(bt.estimatedClosed) + " estimated on " + bt.tripsWithActuals +
-        " completed trip(s), actual spend was " + money0(bt.actual) +
-        " (" + (bt.variancePct > 0 ? "+" : "") + bt.variancePct + "%).",
-        bt.variancePct > 20 ? "warn" : null);
-    } else {
-      line("No completed trips with actual costs yet.");
+    if (q.awaitingClose.length) {
+      section("Closed out recently (" + q.awaitingClose.length + ")");
+      line("Nothing to do here unless something looks wrong \u2014 mark them seen to tidy the list.");
+      q.awaitingClose.slice(0, 15).forEach(function (r) {
+        approvalRow(host, r, "close");
+      });
     }
-    line(money0(bt.estimatedAll - bt.estimatedClosed) + " still committed across " +
-      bt.tripsWithout + " trip(s) that haven't been closed out.");
 
     section("Still to book (" + sum.unbooked.length + ")");
     if (!sum.unbooked.length) { line("Everything upcoming is booked."); }

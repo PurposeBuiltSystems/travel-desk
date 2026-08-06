@@ -29,15 +29,14 @@
       <button id="checkBookings">Check for booking emails</button>
       <details class="options" style="margin-top:8px">
         <summary>Close out a trip — enter what it actually cost</summary>
-        <p class="hint">After you travel, put the real total in here. It updates the same
-           planner row your request created — your estimate stays, so the difference is
-           visible. This is for your division's budget, not reimbursement; expenses still
-           go through Workday as usual.</p>
+        <p class="hint"><b>A ballpark is fine.</b> This is a gauge — is travel costing roughly
+           what we planned? — not an expense claim. Round numbers are genuinely useful; waiting
+           until you have every receipt is not. Your expenses still go through Workday as usual.</p>
         <label>Which trip
           <select id="closeTrip"><option value="">Pick one of your trips…</option></select>
         </label>
         <div class="row2">
-          <label>Actual total $ <input id="closeActual" type="number" min="0" step="0.01" /></label>
+          <label>Roughly what it cost $ <input id="closeActual" type="number" min="0" step="1" placeholder="1200" /></label>
           <label>Note (optional) <input id="closeNote" type="text" placeholder="flight changed, extra night" /></label>
         </div>
         <button id="closeSubmit" class="primary">Record actual costs</button>

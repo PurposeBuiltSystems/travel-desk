@@ -15,6 +15,20 @@
   function byId(id) { return document.getElementById(id); }
 
   /**
+   * Guarded element access. Outlook desktop caches the pane HTML far harder
+   * than the web client while ?v= still fetches today's JavaScript, so startup
+   * routinely runs new code against an old page. One unguarded
+   * `byId(x).value` there throws inside Office.onReady, and Outlook reports
+   * that as "Add-in Error" - the whole pane, not one field. This is the exact
+   * cause of certification finding 1120.3.7.8 on a sibling add-in.
+   */
+  function setVal(id, v) { var el = byId(id); if (el) { el.value = v; } }
+  function setProp(id, k, v) { var el = byId(id); if (el) { el[k] = v; } }
+  function setAttrIf(id, n, v) { var el = byId(id); if (el) { el.setAttribute(n, v); } }
+  function rmAttrIf(id, n) { var el = byId(id); if (el) { el.removeAttribute(n); } }
+  function isChecked(id) { var el = byId(id); return !!(el && el.checked); }
+
+  /**
    * Outlook caches the pane HTML but the ?v= query string makes it fetch
    * JavaScript fresh, so a returning user can run today's JS against
    * yesterday's page. Binding through this helper means a missing element
@@ -72,13 +86,62 @@
     });
   }
 
+  /**
+   * Account row. Certification policy 1100.5.7.1 requires a visible way out
+   * wherever an add-in signs a user in. Every element access is guarded:
+   * Outlook desktop caches the pane HTML while ?v= fetches fresh JS, so this
+   * code can run against a page that predates these controls, and an
+   * unguarded dereference here would throw inside Office.onReady and take
+   * the whole pane down as "Add-in Error".
+   */
+  function authSet(id, k, v) { var e = document.getElementById(id); if (e) { e[k] = v; } }
+
+  async function renderAuthState() {
+    var who = null;
+    try { who = await GraphData.currentAccount(); } catch (e) { who = null; }
+    authSet("authWho", "textContent", who ? ("Signed in as " + who) : "Not signed in");
+    authSet("signOut", "hidden", !who);
+    authSet("signIn", "hidden", !!who);
+  }
+
+  async function doSignIn() {
+    authSet("signIn", "disabled", true);
+    try { await GraphData.getToken(); }
+    catch (e) { authSet("authWho", "textContent", "Sign-in failed: " + ((e && e.message) || e)); }
+    finally { authSet("signIn", "disabled", false); renderAuthState(); }
+  }
+
+  async function doSignOut() {
+    authSet("signOut", "disabled", true);
+    try {
+      await GraphData.signOut();
+      authSet("authWho", "textContent", "Signed out \u2014 this add-in's saved tokens are cleared. " +
+        "Your Outlook session is separate and is not affected; no add-in can end it.");
+    } catch (e) {
+      authSet("authWho", "textContent", "Sign-out failed: " + ((e && e.message) || e));
+    } finally {
+      authSet("signOut", "disabled", false);
+      setTimeout(renderAuthState, 2500);
+    }
+  }
+
+
   Office.onReady(function () {
+    // Certification 1100.5.7.1 - sign-out must be reachable.
+    var _si = document.getElementById("signIn");
+    if (_si) { _si.addEventListener("click", doSignIn); }
+    var _so = document.getElementById("signOut");
+    if (_so) { _so.addEventListener("click", doSignOut); }
+    renderAuthState();
     var s = settings();
-    if (s.wbUrl) { byId("wbUrl").value = s.wbUrl; }
+    if (s.wbUrl) { setVal("wbUrl", s.wbUrl); }
     if (s.tableName) {
-      var opt = document.createElement("option");
-      opt.value = opt.textContent = s.tableName;
-      byId("tableName").appendChild(opt);
+      var tableSel = byId("tableName");
+      if (tableSel) {
+        var opt = document.createElement("option");
+        opt.value = opt.textContent = s.tableName;
+        tableSel.appendChild(opt);
+      }
     }
     ORG_FIELDS.forEach(function (k) {
       var el = byId(k);
@@ -90,9 +153,9 @@
     });
     if (!s.name) {
       var prof = Office.context.mailbox.userProfile;
-      if (prof && prof.displayName) { byId("name").value = prof.displayName; }
+      if (prof && prof.displayName) { setVal("name", prof.displayName); }
     }
-    if (!s.wbUrl) { byId("setup").setAttribute("open", "open"); }
+    if (!s.wbUrl) { setAttrIf("setup", "open", "open"); }
     applyOrgLabels();
 
     on("connect", "click", connectWorkbook);
@@ -108,10 +171,11 @@
     on("checkBookings", "click", checkBookings);
     on("profileApplyFast", "click", function () {
       profileApply(val("profileBlobFast"));
-      byId("profileBlobFast").value = "";
+      setVal("profileBlobFast", "");
     });
     // returning users: lead with their trips; first-timers see the form
-    var tripsEl = byId("trips").querySelector("details");
+    var tripsHost = byId("trips");
+    var tripsEl = tripsHost && tripsHost.querySelector("details");
     if (trips().length === 0 && tripsEl) { tripsEl.removeAttribute("open"); }
     try { renderReimb(); renderTrips(); renderFirstRun(); refreshCoordVisibility(); }
     catch (e) { /* stale cached page — wiring below still binds */ }
@@ -126,19 +190,20 @@
       renderPlannerList();
       setStatus("info", (k === "*" ? "Catch-all planner" : k + " planner") + " removed.");
     });
-    if (!byId("wbFy").value) {
+    if (!val("wbFy")) {
       var today = new Date();
       var p2 = function (n) { return (n < 10 ? "0" : "") + n; };
       // MUST be zero-padded: "2026-8-2" is an Invalid Date, which silently
       // blanked the fiscal year and saved the planner as the catch-all.
       var iso = today.getFullYear() + "-" + p2(today.getMonth() + 1) + "-" + p2(today.getDate());
-      byId("wbFy").value = TravelForm.fiscalLabel(iso, s.fyStartMonth, s.fyPrefix) || "";
+      setVal("wbFy", TravelForm.fiscalLabel(iso, s.fyStartMonth, s.fyPrefix) || "");
     }
     renderPlannerList();
     on("justChips", "click", function (ev) {
       var t = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-txt");
       if (!t) { return; }
       var box = byId("reason");
+      if (!box) { return; }
       box.value = (box.value.trim() ? box.value.trim() + " " : "") + t;
     });
     on("submit", "click", submit);
@@ -161,9 +226,9 @@
     });
     on("eventStart", "change", function () {
       // prefill the free-text conference dates from the event start
-      if (!byId("confDates").value.trim() && byId("eventStart").value) {
-        var d = new Date(byId("eventStart").value + "T00:00:00");
-        byId("confDates").value = d.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
+      if (!val("confDates").trim() && val("eventStart")) {
+        var d = new Date(val("eventStart") + "T00:00:00");
+        setVal("confDates", d.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }));
       }
     });
     refreshFyLine();
@@ -266,7 +331,7 @@
     var el = byId("fyLine");
     if (!el) { return; }
     var st = settings();
-    var date = byId("eventStart").value || byId("departDate").value;
+    var date = val("eventStart") || val("departDate");
     if (!date) { el.textContent = ""; return; }
     var fy = TravelForm.fiscalLabel(date, st.fyStartMonth, st.fyPrefix);
     var picked = TravelForm.pickPlanner(st.planners, fy);

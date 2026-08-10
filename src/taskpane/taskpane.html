@@ -13,13 +13,19 @@
   <!-- JSZip: packages the generated planner workbook client-side -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-  <link rel="stylesheet" href="taskpane.css?v=22" />
+  <link rel="stylesheet" href="taskpane.css?v=23" />
 </head>
 <body>
   <header class="app-head">
     <h1>Travel Desk</h1>
     <p class="sub">One entry &rarr; the Travel Authorization email and the planner spreadsheet row.</p>
   </header>
+  <!-- Certification 1100.5.7.1: a visible way out wherever there is a way in. -->
+  <div id="authRow" class="auth-row">
+    <span id="authWho">Not signed in</span>
+    <button id="signIn" class="linkish" type="button" hidden>Sign in</button>
+    <button id="signOut" class="linkish" type="button" hidden>Sign out</button>
+  </div>
 
   <div id="firstRun" class="firstrun" hidden></div>
 
@@ -294,10 +300,10 @@
 
   <section id="status" class="status" hidden></section>
 
-  <script src="../form.js?v=22"></script>
-  <script src="../xlsxgen.js?v=22"></script>
-  <script src="../coord.js?v=22"></script>
-  <script src="../graph.js?v=22"></script>
-  <script src="taskpane.js?v=22"></script>
+  <script src="../form.js?v=23"></script>
+  <script src="../xlsxgen.js?v=23"></script>
+  <script src="../coord.js?v=23"></script>
+  <script src="../graph.js?v=23"></script>
+  <script src="taskpane.js?v=23"></script>
 </body>
 </html>

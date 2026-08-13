@@ -41,6 +41,24 @@
   }
   function val(id) { var el = byId(id); return el ? el.value : ""; }
 
+  /**
+   * roamingSettings caps at 32 KB across everything this add-in stores. Over
+   * that, saveAsync FAILS - and a callback that ignores asyncResult.status
+   * turns a failure into silent data loss: the user believes it saved. Every
+   * write of real user data goes through here so a failure is at least said
+   * out loud.
+   */
+  function persistSettings(what) {
+    Office.context.roamingSettings.saveAsync(function (r) {
+      if (r && r.status !== Office.AsyncResultStatus.Succeeded) {
+        setStatus("error", "Couldn't save " + (what || "your settings") +
+          " \u2014 you may be at the 32 KB limit Outlook allows an add-in. " +
+          "Recent changes may not survive a restart.");
+      }
+    });
+  }
+
+
   function setStatus(kind, text) {
     var el = byId("status");
     if (!text) { el.hidden = true; return; }
@@ -59,7 +77,7 @@
     var s = settings();
     Object.keys(patch).forEach(function (k) { s[k] = patch[k]; });
     Office.context.roamingSettings.set(SETTINGS_KEY, JSON.stringify(s));
-    Office.context.roamingSettings.saveAsync(function () {});
+    persistSettings("your settings");
     try { renderFirstRun(); refreshCoordVisibility(); } catch (e) { /* pre-DOM calls are fine */ }
     return s;
   }
@@ -340,14 +358,17 @@
     var fy = TravelForm.fiscalLabel(date, st.fyStartMonth, st.fyPrefix);
     var picked = TravelForm.pickPlanner(st.planners, fy);
     if (picked) {
-      el.innerHTML = "Files to: <b>" + (picked.key === "*" ? "your planner" : picked.key + " planner") + "</b> (" +
-        ((picked.planner.wbRef && picked.planner.wbRef.name) || "workbook") + ") \u2713";
+      // Workbook and fiscal-year names come from the user's own files and can
+      // contain < > &. Unescaped, "Travel <Draft> FY27.xlsx" silently loses
+      // the middle of its own name in this line.
+      el.innerHTML = "Files to: <b>" + esc(picked.key === "*" ? "your planner" : picked.key + " planner") + "</b> (" +
+        esc((picked.planner.wbRef && picked.planner.wbRef.name) || "workbook") + ") \u2713";
       el.className = "hint fy-ok";
     } else if (st.planners && Object.keys(st.planners).length) {
-      el.innerHTML = "\u26a0 No planner saved for <b>" + fy + "</b> \u2014 connect that year's workbook in Setup before submitting.";
+      el.innerHTML = "\u26a0 No planner saved for <b>" + esc(fy) + "</b> \u2014 connect that year's workbook in Setup before submitting.";
       el.className = "hint fy-warn";
     } else if (st.wbRef) {
-      el.innerHTML = "Files to: <b>" + (st.wbRef.name || "your planner") + "</b> \u2713";
+      el.innerHTML = "Files to: <b>" + esc(st.wbRef.name || "your planner") + "</b> \u2713";
       el.className = "hint fy-ok";
     } else { el.textContent = ""; }
   }
@@ -368,7 +389,7 @@
   function saveTrips(list) {
     try {
       Office.context.roamingSettings.set(TRIPS_KEY, JSON.stringify(list.slice(-40)));
-      Office.context.roamingSettings.saveAsync(function () {});
+      persistSettings("your trip list");
     } catch (e) { /* best-effort */ }
   }
 

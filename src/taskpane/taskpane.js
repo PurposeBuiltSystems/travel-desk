@@ -24,6 +24,7 @@
    */
   function setVal(id, v) { var el = byId(id); if (el) { el.value = v; } }
   function setProp(id, k, v) { var el = byId(id); if (el) { el[k] = v; } }
+  function setText(id, t) { var el = byId(id); if (el) { el.textContent = t; } }
   function setAttrIf(id, n, v) { var el = byId(id); if (el) { el.setAttribute(n, v); } }
   function rmAttrIf(id, n) { var el = byId(id); if (el) { el.removeAttribute(n); } }
   function isChecked(id) { var el = byId(id); return !!(el && el.checked); }
@@ -202,6 +203,7 @@
     try { renderReimb(); renderTrips(); renderFirstRun(); refreshCoordVisibility(); }
     catch (e) { /* stale cached page — wiring below still binds */ }
     on("savePlanner", "click", savePlanner);
+    on("addCols", "click", addLifecycleColumns);
     on("plannerList", "click", function (ev) {
       var k = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-del");
       if (!k) { return; }
@@ -221,6 +223,9 @@
       setVal("wbFy", TravelForm.fiscalLabel(iso, s.fyStartMonth, s.fyPrefix) || "");
     }
     renderPlannerList();
+    // Diagnostic only: never awaited, never blocks startup, and swallows its
+    // own failure inside checkPlannerColumns().
+    if (s.wbRef && s.tableName) { checkPlannerColumns(); }
     on("justChips", "click", function (ev) {
       var t = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-txt");
       if (!t) { return; }
@@ -316,6 +321,73 @@
     }
   }
 
+  /**
+   * Planners created before the trip lifecycle shipped have the original 15
+   * columns. Close-out writes Actual cost, and approval writes Approved by /
+   * Approved date, so against an older planner those silently have nowhere to
+   * go - the close-out already fails with "the planner has no Actual cost
+   * column yet - ask your coordinator to add one (Setup can do it)". This is
+   * the part of Setup that can actually do it.
+   *
+   * Repair in place rather than asking anyone to rebuild: a planner in use has
+   * a year of trips in it, and columns can be appended to an Excel table
+   * without touching a single existing row.
+   */
+  var LIFECYCLE_COLUMNS = ["Actual cost", "Approved by", "Approved date"];
+  var missingCols = [];
+
+  async function checkPlannerColumns() {
+    var st = settings();
+    var ref = st.wbRef;
+    var table = st.tableName;
+    if (!ref || !table) { setText("colCheck", ""); setProp("addCols", "hidden", true); return; }
+    try {
+      var token = await GraphData.getToken();
+      var have = await GraphData.tableColumns(token, ref, table);
+      var lower = have.map(function (h) { return String(h).toLowerCase().trim(); });
+      missingCols = LIFECYCLE_COLUMNS.filter(function (c) {
+        return lower.indexOf(c.toLowerCase()) === -1;
+      });
+      if (!missingCols.length) {
+        setText("colCheck", "\u2713 This planner has the lifecycle columns \u2014 close-out and approvals will work.");
+        setProp("addCols", "hidden", true);
+      } else {
+        setText("colCheck", "This planner predates the trip lifecycle. Missing: " +
+          missingCols.join(", ") + ". Close-out and approvals need them.");
+        setProp("addCols", "hidden", false);
+      }
+    } catch (e) {
+      // Never block Setup on this check; it is diagnostic, not required.
+      setText("colCheck", "");
+      setProp("addCols", "hidden", true);
+    }
+  }
+
+  async function addLifecycleColumns() {
+    var st = settings();
+    if (!st.wbRef || !st.tableName || !missingCols.length) { return; }
+    setProp("addCols", "disabled", true);
+    var added = [];
+    try {
+      var token = await GraphData.getToken();
+      for (var i = 0; i < missingCols.length; i++) {
+        setStatus("work", "Adding \u201c" + missingCols[i] + "\u201d\u2026");
+        await GraphData.addTableColumn(token, st.wbRef, st.tableName, missingCols[i]);
+        added.push(missingCols[i]);
+      }
+      setStatus("ok", "Added " + added.join(", ") + " to the planner. Existing rows are untouched \u2014 " +
+        "they simply have those cells empty until each trip is closed out.");
+      await checkPlannerColumns();
+    } catch (e) {
+      // Partial success is the likely failure here, so say which ones landed.
+      setStatus("error", (added.length ? "Added " + added.join(", ") + ", then stopped: " : "Couldn't add the columns: ") +
+        ((e && e.message) || e) + (added.length ? " \u2014 click again to finish the rest." : ""));
+      await checkPlannerColumns();
+    } finally {
+      setProp("addCols", "disabled", false);
+    }
+  }
+
   function renderPlannerList() {
     var el = byId("plannerList");
     var pl = settings().planners || {};
@@ -345,6 +417,7 @@
     };
     saveSettings({ planners: pl });
     renderPlannerList();
+    checkPlannerColumns();          // a just-connected planner may predate the lifecycle
     setStatus("info", (key === "*" ? "Saved as the catch-all planner." :
       "Saved as the " + key + " planner \u2014 trips dated in " + key + " will go there automatically."));
   }

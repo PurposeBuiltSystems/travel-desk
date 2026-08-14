@@ -1030,8 +1030,9 @@
         byId("closeActual").value = "";
         byId("closeNote").value = "";
       } else {
-        setStatus("error", "Couldn't find your row, or the planner has no \u201cActual cost\u201d " +
-          "column yet — ask your coordinator to add one (Setup can do it).");
+        setStatus("error", "Couldn't find your row, or this planner predates the trip lifecycle. " +
+          "A coordinator can fix that in one click: Setup \u2192 \u201cAdd the missing " +
+          "lifecycle columns\u201d. Existing rows aren't touched.");
       }
     } finally {
       byId("closeSubmit").disabled = false;

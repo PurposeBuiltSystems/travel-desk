@@ -223,6 +223,7 @@
       setVal("wbFy", TravelForm.fiscalLabel(iso, s.fyStartMonth, s.fyPrefix) || "");
     }
     renderPlannerList();
+    renderPlannerLink();
     // Diagnostic only: never awaited, never blocks startup, and swallows its
     // own failure inside checkPlannerColumns().
     if (s.wbRef && s.tableName) { checkPlannerColumns(); }
@@ -546,6 +547,52 @@
    * "travelers: just paste your code". That is how a correct instruction still
    * leaves someone with nowhere to go.
    */
+  /**
+   * Open the planner workbook itself.
+   *
+   * "Create my planner" writes a file into OneDrive that the user has never
+   * seen and cannot picture - the add-in knows where it went and the person
+   * does not. Opening it once, at the moment it is created, answers "where is
+   * it?" before it is asked. Connecting an existing workbook does not need
+   * this: the user pasted the link, so they already know.
+   *
+   * openBrowserWindow is the sanctioned route and behaves on the web hosts;
+   * window.open is the desktop fallback. If both are blocked the persistent
+   * link below is still there, so this never becomes the only way in.
+   */
+  function openWorkbookUrl(url) {
+    if (!url) { return false; }
+    try {
+      if (Office.context.ui && Office.context.ui.openBrowserWindow) {
+        Office.context.ui.openBrowserWindow(url);
+        return true;
+      }
+      window.open(url, "_blank");
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /** A standing "open it" link, so the planner is never more than one click away. */
+  function renderPlannerLink() {
+    var host = byId("plannerLink");
+    if (!host) { return; }
+    var st = settings();
+    var url = (st.wbUrl || "").trim();
+    host.innerHTML = "";
+    if (!url) { host.hidden = true; return; }
+    host.hidden = false;
+    var a = document.createElement("a");
+    a.href = "#";
+    a.textContent = "\u2197 Open the planner workbook";
+    a.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      if (!openWorkbookUrl(url)) {
+        setStatus("info", "Couldn't open it from here \u2014 the link is in the box above.");
+      }
+    });
+    host.appendChild(a);
+  }
+
   function openPlannerSetup() {
     setAttrIf("setup", "open", "open");
     setAttrIf("coordSetup", "open", "open");
@@ -1313,8 +1360,12 @@
       setVal("wbUrl", made.webUrl || "");
       setProp("noTableBox", "hidden", true);
       saveSettings({ wbUrl: made.webUrl || "", tableName: tableName });
-      setStatus("info", "Created \u201c" + made.name + "\u201d in your OneDrive and connected it. " +
-        "Set the fiscal year it covers, then Save planner for this year.");
+      renderPlannerLink();
+      var shown = openWorkbookUrl(made.webUrl);
+      setStatus("info", "Created \u201c" + made.name + "\u201d in your OneDrive and connected it." +
+        (shown ? " I've opened it so you can see where it lives." :
+                 " Use \u201cOpen the planner workbook\u201d above to see where it lives.") +
+        " Set the fiscal year it covers, then Save planner for this year.");
     } catch (e) {
       setStatus("error", "Couldn't create the planner: " + ((e && e.message) || e));
     } finally {

@@ -30,8 +30,23 @@
   }
 
   /** Excel's A1-style range for a header row of n columns. */
+  /**
+   * Address for the header row, in the form Graph itself uses.
+   *
+   * This used to quote the sheet name - 'Planner'!A1:R1 - which is valid
+   * Excel syntax and is NOT accepted by the workbook API's tables/add. The
+   * proof was sitting in the same codebase: "Make this sheet a table" works,
+   * and it passes the address returned by usedRange, which Graph writes
+   * unquoted as Planner!A1:R1. Creating a planner failed at exactly that step
+   * - the workbook uploaded fine and then had no table.
+   *
+   * The sheet name here is ours ("Planner"), so it never needs quoting. A
+   * name containing a space or apostrophe would not survive this - that is
+   * an accepted limit, not an oversight, because nothing here lets a user
+   * name the sheet.
+   */
   function headerRange(sheetName, n) {
-    return "'" + String(sheetName).replace(/'/g, "''") + "'!A1:" + colLetter(n) + "1";
+    return String(sheetName) + "!A1:" + colLetter(n) + "1";
   }
 
   /**

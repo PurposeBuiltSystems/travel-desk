@@ -257,13 +257,21 @@ check("parseTravelers on empty input", F.parseTravelers("").length, 0);
 
 var wbg = G.buildWorkbook(MH, "Planner");
 check("five OOXML parts", Object.keys(wbg.parts).length, 5);
-check("header range matches column count (18 cols -> R)", wbg.range, "'Planner'!A1:R1");
+// Graph's tables/add rejects a quoted sheet name. usedRange - the path
+// "Make this sheet a table" uses successfully - returns Planner!A1:R1,
+// so the generated address must match that shape exactly.
+check("header range matches column count (18 cols -> R)", wbg.range, "Planner!A1:R1");
 check("headers land in the sheet",
   wbg.parts["xl/worksheets/sheet1.xml"].indexOf("<t xml:space=\"preserve\">Traveler</t>") !== -1, true);
 check("sheet name in workbook.xml",
   wbg.parts["xl/workbook.xml"].indexOf('name="Planner"') !== -1, true);
 check("column letters past Z", G.colLetter(27), "AA");
-check("sheet names with quotes are escaped", G.headerRange("Bob's sheet", 2), "'Bob''s sheet'!A1:B1");
+// The sheet name is always ours ("Planner"), never user input, so the
+// address is emitted unquoted. Documented as an assumption rather than
+// silently relied on: a name needing quotes would not survive this.
+check("simple sheet name is emitted unquoted", G.headerRange("Planner", 2), "Planner!A1:B1");
+check("the address shape Graph returns and accepts",
+  /^[A-Za-z0-9 ]+![A-Z]+\d+:[A-Z]+\d+$/.test(G.headerRange("Planner", 18)), true);
 check("ampersand in a header is escaped",
   G.buildWorkbook(["A & B"]).parts["xl/worksheets/sheet1.xml"].indexOf("A &amp; B") !== -1, true);
 

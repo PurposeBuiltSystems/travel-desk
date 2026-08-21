@@ -1255,16 +1255,44 @@
       wbRef = { driveId: made.ref.driveId, itemId: made.ref.itemId, name: made.name };
 
       setStatus("work", "Formatting it as a table\u2026");
-      var t = await GraphData.addTable(token, wbRef, built.range, "TravelPlanner");
-      var tableName = (t && t.name) || "TravelPlanner";
+      // The workbook is already saved by this point. If the table step fails,
+      // the file must not be abandoned - that is what made this look like
+      // "create my planner doesn't work" while leaving an orphaned workbook in
+      // OneDrive. Try Graph's own usedRange address as a fallback, which is
+      // the path "Make this sheet a table" uses and is known to work.
+      var tableName = null;
+      try {
+        var t = await GraphData.addTable(token, wbRef, built.range, "TravelPlanner");
+        tableName = (t && t.name) || "TravelPlanner";
+      } catch (tableErr) {
+        try {
+          var used = await GraphData.usedRange(token, wbRef, "Planner");
+          if (used && used.address) {
+            var t2 = await GraphData.addTable(token, wbRef, used.address, "TravelPlanner");
+            tableName = (t2 && t2.name) || "TravelPlanner";
+          }
+        } catch (e2) { /* fall through to the guidance below */ }
+        if (!tableName) {
+          // Keep the workbook connected so one click finishes the job.
+          setVal("wbUrl", made.webUrl || "");
+          saveSettings({ wbUrl: made.webUrl || "" });
+          setStatus("error", "Created \u201c" + made.name + "\u201d in your OneDrive, but couldn't " +
+            "format it as a table (" + ((tableErr && tableErr.message) || tableErr) + "). " +
+            "It's connected \u2014 pick the Planner sheet and click \u201cMake this sheet a table\u201d.");
+          setProp("noTableBox", "hidden", false);
+          return;
+        }
+      }
 
       var sel = byId("tableName");
-      sel.innerHTML = "";
-      var o = document.createElement("option");
-      o.value = o.textContent = tableName;
-      sel.appendChild(o);
-      byId("wbUrl").value = made.webUrl || "";
-      byId("noTableBox").hidden = true;
+      if (sel) {
+        sel.innerHTML = "";
+        var o = document.createElement("option");
+        o.value = o.textContent = tableName;
+        sel.appendChild(o);
+      }
+      setVal("wbUrl", made.webUrl || "");
+      setProp("noTableBox", "hidden", true);
       saveSettings({ wbUrl: made.webUrl || "", tableName: tableName });
       setStatus("info", "Created \u201c" + made.name + "\u201d in your OneDrive and connected it. " +
         "Set the fiscal year it covers, then Save planner for this year.");

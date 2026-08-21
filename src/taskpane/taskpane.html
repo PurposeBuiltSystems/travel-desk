@@ -13,7 +13,7 @@
   <!-- JSZip: packages the generated planner workbook client-side -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-  <link rel="stylesheet" href="taskpane.css?v=28" />
+  <link rel="stylesheet" href="taskpane.css?v=29" />
 </head>
 <body>
   <header class="app-head">
@@ -73,14 +73,14 @@
   </section>
 
   <details id="setup" class="options">
-    <summary>Setup (once) — travelers: just paste your code</summary>
+    <summary>Setup (once) — connect the planner, or paste your traveler code</summary>
     <div class="fastpath">
       <b>I'm a traveler and my coordinator sent me a setup code.</b> Paste it here and you're done — nothing else on this page applies to you:
       <textarea id="profileBlobFast" rows="2" placeholder="Setup code"></textarea>
       <button id="profileApplyFast" class="primary">Apply my code</button>
     </div>
-    <details class="options">
-      <summary>I'm the coordinator — set this up for my team</summary>
+    <details id="coordSetup" class="options">
+      <summary>I'm the coordinator — set this up for my team (planner workbook)</summary>
     <div class="fastpath" style="margin-bottom:10px">
       <b>No planner yet?</b> Create one with the right columns already set up.
       <div class="row2">
@@ -304,10 +304,10 @@
 
   <section id="status" class="status" hidden></section>
 
-  <script src="../form.js?v=28"></script>
-  <script src="../xlsxgen.js?v=28"></script>
-  <script src="../coord.js?v=28"></script>
-  <script src="../graph.js?v=28"></script>
-  <script src="taskpane.js?v=28"></script>
+  <script src="../form.js?v=29"></script>
+  <script src="../xlsxgen.js?v=29"></script>
+  <script src="../coord.js?v=29"></script>
+  <script src="../graph.js?v=29"></script>
+  <script src="taskpane.js?v=29"></script>
 </body>
 </html>

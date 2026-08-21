@@ -537,6 +537,25 @@
 
   /** The coordinator section only makes sense once a planner is connected —
    *  travellers who pasted a profile code never see it. */
+  /**
+   * Reveal the workbook controls and put them on screen.
+   *
+   * They live inside <details id="setup"> and then <details id="coordSetup">,
+   * so a coordinator who is told to "connect the planner in Setup" has to know
+   * to open two collapsed sections, the outer of which used to be labelled
+   * "travelers: just paste your code". That is how a correct instruction still
+   * leaves someone with nowhere to go.
+   */
+  function openPlannerSetup() {
+    setAttrIf("setup", "open", "open");
+    setAttrIf("coordSetup", "open", "open");
+    var el = byId("coordSetup") || byId("setup");
+    if (el && el.scrollIntoView) {
+      try { el.scrollIntoView({ behavior: "smooth", block: "start" }); }
+      catch (e) { el.scrollIntoView(); }   // older webviews take no options
+    }
+  }
+
   function refreshCoordVisibility() {
     var el = byId("coord");
     if (!el) { return; }
@@ -1408,7 +1427,13 @@
     }
     var s = settings();
     if (doRow && !(s.wbRef || wbRef)) {
-      setStatus("error", "Connect the planner workbook first (Setup section), or untick the planner action.");
+      // Telling someone to "go to the Setup section" is useless when the
+      // controls sit behind two collapsed <details> and the outer one is
+      // labelled for travelers. Open the path and scroll to it instead.
+      openPlannerSetup();
+      setStatus("error", "No planner is connected yet. I've opened Setup below \u2014 " +
+        "use \u201cCreate my planner\u201d, or \u201cShow my files\u201d to connect an existing " +
+        "workbook. Or untick \u201cAdd row to Division planner\u201d to send just the email.");
       return;
     }
 

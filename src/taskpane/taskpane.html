@@ -13,7 +13,7 @@
   <!-- JSZip: packages the generated planner workbook client-side -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-  <link rel="stylesheet" href="taskpane.css?v=30" />
+  <link rel="stylesheet" href="taskpane.css?v=31" />
 </head>
 <body>
   <header class="app-head">
@@ -85,9 +85,15 @@
       <b>No planner yet?</b> Create one with the right columns already set up.
       <div class="row2">
         <label>File name <input id="newPlannerName" type="text" placeholder="Division travel planner 2027" /></label>
-        <label>&nbsp;<button id="createPlanner" class="primary" style="width:100%">Create my planner</button></label>
+        <label>Folder in your OneDrive <input id="newPlannerFolder" type="text" placeholder="Travel (leave blank for the top level)" /></label>
       </div>
-      <p class="hint" style="margin:4px 0 0">Saved to your OneDrive, formatted as an Excel table, and connected automatically.</p>
+      <button id="createPlanner" class="primary" style="width:100%">Create my planner</button>
+      <p class="hint" style="margin:4px 0 0">Formatted as an Excel table and connected automatically, then opened
+         so you can see where it landed. Folders are created if they don't exist — nested paths like
+         <code>Travel/FY27</code> work.</p>
+      <p class="hint" style="margin:4px 0 0"><b>A planner your division shares is better off on a SharePoint
+         or Teams site than in one person's OneDrive</b> — a personal file goes with the account. To do that,
+         make the workbook there yourself and connect it below with <b>Show my files</b> or its link.</p>
     </div>
 
     <label>Pick your planner workbook
@@ -305,10 +311,10 @@
 
   <section id="status" class="status" hidden></section>
 
-  <script src="../form.js?v=30"></script>
-  <script src="../xlsxgen.js?v=30"></script>
-  <script src="../coord.js?v=30"></script>
-  <script src="../graph.js?v=30"></script>
-  <script src="taskpane.js?v=30"></script>
+  <script src="../form.js?v=31"></script>
+  <script src="../xlsxgen.js?v=31"></script>
+  <script src="../coord.js?v=31"></script>
+  <script src="../graph.js?v=31"></script>
+  <script src="taskpane.js?v=31"></script>
 </body>
 </html>

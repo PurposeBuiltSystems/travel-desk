@@ -232,9 +232,46 @@
   }
 
   /** Create a workbook in the user's OneDrive root. Returns a {driveId,itemId} ref. */
-  async function uploadWorkbook(token, filename, bytes) {
-    var res = await fetchRetry(GRAPH + "/me/drive/root:/" +
-      encodeURIComponent(filename) + ":/content", {
+  /**
+   * Create a folder chain in OneDrive if it isn't there. 409 means it already
+   * exists, which is the outcome we want, so it is not an error.
+   */
+  var ensuredFolders = {};
+  async function ensureFolder(token, path) {
+    var segs = String(path || "").split("/").map(function (x) { return x.trim(); }).filter(Boolean);
+    var soFar = "";
+    for (var i = 0; i < segs.length; i++) {
+      var parent = soFar;
+      soFar = soFar ? soFar + "/" + segs[i] : segs[i];
+      if (ensuredFolders[soFar]) { continue; }
+      var url = parent
+        ? "/me/drive/root:/" + parent.split("/").map(encodeURIComponent).join("/") + ":/children"
+        : "/me/drive/root/children";
+      var res = await fetchRetry(GRAPH + url, {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: segs[i], folder: {}, "@microsoft.graph.conflictBehavior": "fail" }),
+      });
+      if (!res.ok && res.status !== 409) {
+        throw new Error("Couldn't create the folder \u201c" + soFar + "\u201d (" + res.status + ")");
+      }
+      ensuredFolders[soFar] = true;
+    }
+    return segs.join("/");
+  }
+
+  /**
+   * folder is optional. Empty means the OneDrive root, which is where this
+   * always used to put the planner - fine for a personal file, less so for
+   * something a division shares, which is why the caller can now choose.
+   */
+  async function uploadWorkbook(token, filename, bytes, folder) {
+    var dir = "";
+    if (folder && String(folder).trim()) { dir = await ensureFolder(token, folder); }
+    var target = dir
+      ? dir.split("/").map(encodeURIComponent).join("/") + "/" + encodeURIComponent(filename)
+      : encodeURIComponent(filename);
+    var res = await fetchRetry(GRAPH + "/me/drive/root:/" + target + ":/content", {
       method: "PUT",
       headers: {
         Authorization: "Bearer " + token,
@@ -409,6 +446,7 @@
     usedRange: usedRange,
     addTable: addTable,
     uploadWorkbook: uploadWorkbook,
+    ensureFolder: ensureFolder,
     tableHeaders: tableHeaders,
     addTableRow: addTableRow,
     tableRows: tableRows,

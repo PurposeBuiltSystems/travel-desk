@@ -178,6 +178,9 @@
       var prof = Office.context.mailbox.userProfile;
       if (prof && prof.displayName) { setVal("name", prof.displayName); }
     }
+    // Remembered per person, not shared in the org profile - where you keep
+    // your own file is not a decision to push onto everyone else.
+    if (s.plannerFolder) { setVal("newPlannerFolder", s.plannerFolder); }
     if (!s.wbUrl) { setAttrIf("setup", "open", "open"); }
     applyOrgLabels();
 
@@ -1307,6 +1310,10 @@
   async function createPlanner() {
     var name = (val("newPlannerName") || "Division travel planner").trim();
     if (!/\.xlsx$/i.test(name)) { name += ".xlsx"; }
+    // Where it goes is the coordinator's call. Blank keeps the old behaviour,
+    // the OneDrive root, which is a reasonable default and a poor assumption
+    // to have baked in permanently.
+    var folder = (val("newPlannerFolder") || "").trim().replace(/^\/+|\/+$/g, "");
     byId("createPlanner").disabled = true;
     try {
       setStatus("work", "Building the workbook\u2026");
@@ -1317,7 +1324,9 @@
 
       setStatus("work", "Saving it to your OneDrive\u2026");
       var token = await GraphData.getToken();
-      var made = await GraphData.uploadWorkbook(token, name, bytes);
+      if (folder) { setStatus("work", "Making sure \u201c" + folder + "\u201d exists\u2026"); }
+      var made = await GraphData.uploadWorkbook(token, name, bytes, folder);
+      saveSettings({ plannerFolder: folder });
       wbRef = { driveId: made.ref.driveId, itemId: made.ref.itemId, name: made.name };
 
       setStatus("work", "Formatting it as a table\u2026");

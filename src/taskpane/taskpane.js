@@ -227,6 +227,7 @@
     }
     renderPlannerList();
     renderPlannerLink();
+    renderVersion();
     // Diagnostic only: never awaited, never blocks startup, and swallows its
     // own failure inside checkPlannerColumns().
     if (s.wbRef && s.tableName) { checkPlannerColumns(); }
@@ -594,6 +595,31 @@
       }
     });
     host.appendChild(a);
+  }
+
+  /**
+   * Which build is actually running.
+   *
+   * Outlook caches the pane HTML for far longer than the server asks (the
+   * files are served max-age=600). The ?v= that busts the JavaScript lives
+   * INSIDE that HTML, so a stale page quietly loads stale script - and a fix
+   * that is live on the server does nothing for the user, with no way for
+   * either of us to tell. Reading the version back out of the script tag and
+   * showing it turns that into something checkable in one glance.
+   */
+  function paneVersion() {
+    try {
+      var tags = document.querySelectorAll('script[src*="taskpane.js"]');
+      var src = tags && tags.length ? tags[tags.length - 1].getAttribute("src") : "";
+      var m = /\?v=(\d+)/.exec(src || "");
+      return m ? m[1] : "?";
+    } catch (e) { return "?"; }
+  }
+
+  function renderVersion() {
+    var el = byId("paneVersion");
+    if (!el) { return; }
+    el.textContent = "Travel Desk build " + paneVersion();
   }
 
   function openPlannerSetup() {

@@ -1177,7 +1177,11 @@
       if (!open.length) { setStatus("info", "No trips waiting on bookings. \u2708\ufe0f"); return; }
       setStatus("work", "Checking your inbox for booking confirmations\u2026");
       var token = await GraphData.getToken();
-      var since = open.reduce(function (min, t) { return t.createdAt < min ? t.createdAt : min; }, open[0].createdAt);
+      var earliest = open.reduce(function (min, t) { return t.createdAt < min ? t.createdAt : min; }, open[0].createdAt);
+      // Reach back before the earliest request, or the confirmation that
+      // arrived BEFORE the paperwork is never even fetched.
+      var lookback = (TravelForm.BOOKING_LOOKBACK_DAYS || 120) * 864e5;
+      var since = new Date((Date.parse(earliest) || Date.now()) - lookback).toISOString();
       var senders = (val("bookingSenders") || "").split(",");
       var emails = await GraphData.bookingEmails(token, since);
       var booked = 0, unsure = 0;

@@ -139,7 +139,11 @@ var mails = [
 ];
 var mb = F.matchBooking(trip, mails);
 check("confident match by city", mb.confident && mb.confident.webLink, "w1");
-check("pre-request email excluded", mb.candidates.some(function (e) { return e.webLink === "w3"; }), false);
+// Pre-request mail is now considered - you often register before filing the
+// paperwork - but a confirmation issued AFTER the request still wins, so the
+// look-back never overrides the obvious answer.
+check("pre-request email is now a candidate", mb.candidates.some(function (e) { return e.webLink === "w3"; }), true);
+check("but the post-request confirmation still wins", mb.confident && mb.confident.webLink, "w1");
 
 // A conference registration from an arbitrary sender must match. Requiring a
 // pre-listed sender domain made a real EDC-8 registration confirmation
@@ -152,6 +156,21 @@ var regMails = [
 ];
 check("registration from an unlisted sender matches",
   F.matchBooking(regTrip, regMails, ["concursolutions.com"]).confident.webLink, "r1");
+
+// You register for a conference FIRST and file the authorisation afterwards,
+// so the confirmation is already in the inbox when the request is raised.
+// Requiring booking-after-request made that ordinary case invisible.
+var lateFiled = { event: "EDC-8 Midwest Peer Exchange", location: "Ames, IA",
+  createdAt: "2026-08-23T14:00:00Z", eventStart: "2026-09-15", returnDate: "2026-09-17" };
+check("confirmation that arrived BEFORE the request still matches",
+  F.matchBooking(lateFiled, regMails, []).confident.webLink, "r1");
+
+// ...but not indefinitely far back.
+var ancient = [{ subject: "EDC-8 Midwest Peer Exchange Registration Confirmation",
+  bodyPreview: "registered", from: "x@y.gov",
+  receivedDateTime: "2025-01-01T09:00:00Z", webLink: "old" }];
+check("a confirmation from a year earlier is not matched",
+  F.matchBooking(lateFiled, ancient, []).confident, null);
 
 // Mentioning the city is not enough on its own - it must look like a booking.
 var chatter = [
@@ -173,7 +192,7 @@ check("trusted sender needs no booking words",
 var mails2 = mails.concat([{ subject: "Updated trip to Washington", bodyPreview: "", receivedDateTime: "2026-07-22T09:00:00Z", webLink: "w4" }]);
 var mb2 = F.matchBooking(trip, mails2);
 check("ambiguous -> no confident", mb2.confident, null);
-check("candidates in window", mb2.candidates.length, 3);
+check("candidates in window", mb2.candidates.length, 4);
 
 // 12. Status column -> "Requested" (coordinator follow-up queue)
 var stRow = F.plannerRow(["Event Name", "Status", "COO approved"], model, { fyStartMonth: 7, fyPrefix: "SFY" });

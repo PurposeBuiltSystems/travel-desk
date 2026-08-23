@@ -222,6 +222,10 @@
   // Words that mark a message as being ABOUT a booking. Deliberately broad:
   // a conference registration is as much a booking as a flight, and the
   // add-in should not decide which kinds of travel count.
+  // How far back of a request to still accept a confirmation. Long enough
+  // for "registered in June, filed the paperwork in August".
+  var LOOKBACK_DAYS = 120;
+
   var BOOKING_WORDS = new RegExp("\\b(" + [
     "confirm(ed|ation|s)?", "itinerar(y|ies)", "reservation", "registration",
     "registered", "book(ed|ing)", "e-?ticket", "ticket", "check-?in",
@@ -232,11 +236,16 @@
     var reqT = Date.parse(trip.createdAt || "") || 0;
     var endT = Date.parse(trip.returnDate || trip.eventStart || "") || (reqT + 90 * 864e5);
     endT += 864e5; // through the end of the return day
+    // Confirmations that PREDATE the request are normal, not anomalous. For a
+    // conference you register first and seek authorisation afterwards, so the
+    // registration email is already sitting in the inbox when the request is
+    // filed. Requiring booking-after-request made exactly that case invisible.
+    var startT = reqT - LOOKBACK_DAYS * 864e5;
     var city = String(trip.location || "").split(",")[0].trim().toLowerCase();
     var eventTok = String(trip.event || "").toLowerCase();
     var candidates = (emails || []).filter(function (e) {
       var t = Date.parse(e.receivedDateTime || "") || 0;
-      return t >= reqT && t <= endT;
+      return t >= startT && t <= endT;
     });
     var trusted = (trustedDomains || []).map(function (d) {
       return String(d).toLowerCase().trim();
@@ -257,8 +266,17 @@
       // conference registration through on its own merits.
       return fromTrusted || BOOKING_WORDS.test((e.subject || "") + " " + (e.bodyPreview || ""));
     });
+    // Looking back past the request means an old confirmation can compete with
+    // the real one. A confirmation issued AFTER the paperwork is the more
+    // likely operative booking, so those win outright; the look-back only
+    // decides when nothing arrived afterwards - which is precisely the
+    // register-first case it exists for.
+    var after = confident.filter(function (e) {
+      return (Date.parse(e.receivedDateTime || "") || 0) >= reqT;
+    });
+    var pool = after.length ? after : confident;
     return {
-      confident: confident.length === 1 ? confident[0] : null,
+      confident: pool.length === 1 ? pool[0] : null,
       candidates: candidates,
     };
   }
@@ -548,6 +566,7 @@
     workdayPacketHtml: workdayPacketHtml,
     reminderHtml: reminderHtml,
     matchBooking: matchBooking,
+    BOOKING_LOOKBACK_DAYS: LOOKBACK_DAYS,
     computeTotals: computeTotals,
     subjectLine: subjectLine,
     fiscalLabel: fiscalLabel,

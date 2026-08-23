@@ -618,8 +618,7 @@
     // The billing contact: a mailbox named where reimbursement or questions
     // are discussed. A shared address beats a person's - it survives them
     // changing jobs, which is exactly when a receivable goes unchased.
-    var mails = [], mrx = /\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b/g, mm;
-    while ((mm = mrx.exec(t))) { mails.push({ addr: mm[1], at: mm.index }); }
+    var mails = emailsIn(t), mm;
     var cueAt = [];
     var crx = new RegExp(REIMB_CUE.source + "|questions?|contact", "gi");
     while ((mm = crx.exec(t))) { cueAt.push(mm.index); }
@@ -696,6 +695,122 @@
     });
     var s = t.slice(start, Math.min(stop, start + 160)).replace(/\s+/g, " ").trim();
     return s.length > 150 ? s.slice(0, 147) + "…" : s;
+  }
+
+  // ------------------------------------------------------- your own details
+
+  /**
+   * Your division, bureau and home city, read out of your own signature block.
+   *
+   * These are the fields a confirmation email never contains, because they are
+   * facts about you rather than the trip — and they are also the ones a person
+   * is most irritated to retype. They do appear, in every message you have
+   * ever forwarded, in the signature underneath.
+   *
+   *   Matthew Miller, CPM
+   *   Director of New and Emerging Transportation Technologies
+   *   Systems Operations Division      <- division
+   *   Iowa Department of Transportation
+   *   800 Lincoln Way
+   *   Ames, IA 50010                   <- home city
+   *
+   * It is anchored on YOUR name and looks only at the handful of lines below
+   * it. A confirmation carries the sender's signature too — "FHWA | Office of
+   * Infrastructure" — and without the anchor this would confidently report
+   * that you work for the people who invited you.
+   */
+  function findSignature(text, myName) {
+    var name = String(myName || "").trim();
+    if (!name) { return null; }
+    var t = clean(text);
+    var lines = t.split("\n");
+
+    // Match on surname too: signatures alternate "Matthew Miller" and
+    // "Miller, Matthew" within a single forwarded thread.
+    var parts = name.split(/[\s,]+/).filter(Boolean);
+    var last = parts.length ? parts[parts.length - 1] : "";
+    if (/^(jr|sr|ii|iii|iv|cpm|pe|phd|aicp)\.?$/i.test(last) && parts.length > 1) {
+      last = parts[parts.length - 2];
+    }
+    var first = parts[0] || "";
+
+    var out = { division: "", bureau: "", city: "" };
+    for (var i = 0; i < lines.length; i++) {
+      var L = lines[i].trim();
+      var isMe = last && L.length < 60 &&
+        new RegExp("\\b" + last.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "i").test(L) &&
+        (!first || new RegExp("\\b" + first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "i").test(L));
+      if (!isMe) { continue; }
+      for (var j = i + 1; j < Math.min(lines.length, i + 9); j++) {
+        var s = lines[j].trim().replace(/[|•·]+/g, " ").replace(/\s{2,}/g, " ").trim();
+        if (!s) { continue; }
+        if (/^(from|sent|to|cc|subject|date)\s*:/i.test(s)) { break; }   // next header block
+        var m;
+        if (!out.division && (m = /^(.{2,45}?)\s+Division$/i.exec(s))) { out.division = m[1].trim(); }
+        if (!out.bureau && (m = /^(?:Bureau\s+of\s+)(.{2,45})$/i.exec(s))) { out.bureau = m[1].trim(); }
+        if (!out.bureau && (m = /^(.{2,45}?)\s+Bureau$/i.exec(s))) { out.bureau = m[1].trim(); }
+        if (!out.bureau && (m = /^Office\s+of\s+(.{2,45})$/i.exec(s))) { out.bureau = m[1].trim(); }
+        if (!out.city && (m = /^([A-Z][A-Za-z .'-]{1,30}),\s*([A-Z]{2})\s+\d{5}(?:-\d{4})?$/.exec(s)) &&
+            STATES[m[2]]) { out.city = m[1].trim(); }
+      }
+      if (out.division || out.bureau || out.city) { break; }
+    }
+    return (out.division || out.bureau || out.city) ? out : null;
+  }
+
+  /**
+   * "Please return this form ... in email to Keri.Greenfield@iowadot.us"
+   *
+   * Every organization's travel form names the person it goes back to, and a
+   * new traveler otherwise has to be told that address by someone. Worth
+   * offering — never applying silently, because the coordinator is a setting
+   * that outlives this one trip.
+   */
+  function findCoordinator(text, myDomain) {
+    var t = clean(text);
+    var dom = String(myDomain || "").toLowerCase();
+    var best = "", bestScore = 0;
+    emailsIn(t).forEach(function (e) {
+      if (/(noreply|no-reply|donotreply|notify|unsubscribe)/i.test(e.addr)) { return; }
+      var before = t.slice(Math.max(0, e.at - 140), e.at);
+      var score = 0;
+      // "return this FORM to X" is the coordinator. A bare "email X" is
+      // whoever runs the event, and addressing your authorization paperwork
+      // to the conference organizer is worse than leaving it unset.
+      if (/\b(return|submit|forward|send)\b[^.]{0,60}\bform\b/i.test(before)) { score += 60; }
+      else if (/\b(return|submit)\b/i.test(before)) { score += 30; }
+      else if (/\b(send|forward)\b/i.test(before)) { score += 12; }
+      else if (/\b(email|e-mail|reply)\b/i.test(before)) { score += 6; }
+      else { return; }
+      // Your travel coordinator works where you work.
+      if (dom && e.addr.toLowerCase().indexOf("@" + dom) > 0) { score += 45; }
+      else if (dom) { score -= 25; }
+      if (score > bestScore) { bestScore = score; best = e.addr; }
+    });
+    // 10 clears a plain "send it to X" but not a bare "email X" at an outside
+    // domain, which is the event's organizer rather than your coordinator.
+    return bestScore >= 10 ? best : "";
+  }
+
+  var MAIL_STRICT = /\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b/g;
+  // Text lifted out of a PDF carries the letter-spacing the layout used, so a
+  // perfectly ordinary address arrives as "Keri . Greenfield @iowadot.us" and
+  // the strict pattern misses it entirely. The loose pattern is only tried
+  // when the strict one found nothing at all — on clean text it could staple
+  // a sentence-ending full stop onto the address in front of it.
+  var MAIL_LOOSE = /([A-Za-z0-9_%+-]+(?:\s*\.\s*[A-Za-z0-9_%+-]+)*\s*@\s*[A-Za-z0-9-]+(?:\s*\.\s*[A-Za-z0-9-]+)+)/g;
+
+  function emailsIn(text) {
+    var t = String(text), out = [], m;
+    MAIL_STRICT.lastIndex = 0;
+    while ((m = MAIL_STRICT.exec(t))) { out.push({ addr: m[1], at: m.index }); }
+    if (out.length) { return out; }
+    MAIL_LOOSE.lastIndex = 0;
+    while ((m = MAIL_LOOSE.exec(t))) {
+      var addr = m[1].replace(/\s+/g, "");
+      if (/\.[A-Za-z]{2,}$/.test(addr)) { out.push({ addr: addr, at: m.index }); }
+    }
+    return out;
   }
 
   /** "Code: MV59BR3A" / "Confirmation number 4820193" — worth keeping. */
@@ -899,11 +1014,22 @@
       put("returnDate", shiftDays(dates.end || dates.start, 1), "assumed — the day after the event");
     }
 
+    // --- your own details, from your signature block ---
+    var sig = null;
+    pool.forEach(function (p) { if (!sig) { sig = findSignature(p.text, inp.myName); } });
+    if (sig) {
+      put("division", sig.division, "your signature block");
+      put("bureau", sig.bureau, "your signature block");
+    }
+    // Knowing where you are based is what stops your own office being read as
+    // the destination, and the signature states it.
+    var home = inp.homeCity || (sig && sig.city) || "";
+
     // --- location ---
     if (!fields.location) {
       pool.forEach(function (p) {
         if (fields.location) { return; }
-        var loc = findLocation(p.text, inp.homeCity);
+        var loc = findLocation(p.text, home);
         if (loc.value) {
           put("location", loc.value, p.name);
           if (loc.alternates.length) { alternates.location = loc.alternates; }
@@ -970,12 +1096,26 @@
     var code = findCode(bodyText);
     if (code) { put("comments", "Registration code " + code, "the email"); }
 
+    // --- offered, never applied: settings outlive this one trip ---
+    var suggest = {};
+    var coord = "";
+    // Attachments first here, unlike everywhere else: the travel FORM names
+    // the coordinator, while the event email names the event's organizer.
+    pool.slice(1).concat(pool[0]).forEach(function (p) {
+      if (!coord) { coord = findCoordinator(p.text, inp.myDomain); }
+    });
+    if (coord) { suggest.coordEmail = coord; }
+    if (home) { suggest.homeCity = home; }
+
     if (!fields.event) { notes.push("Couldn't tell what the event is called — the subject was all boilerplate."); }
     if (!fields.eventStart) { notes.push("No event date found. Confirmations that only say \"see attached\" usually need it typed in."); }
     if (!fields.location) { notes.push("No destination found."); }
     if (!fields.cRegistration) { notes.push("No labelled registration amount found — unlabelled dollar figures are left alone on purpose."); }
 
-    return { fields: fields, sources: sources, alternates: alternates, notes: notes };
+    return {
+      fields: fields, sources: sources, alternates: alternates,
+      notes: notes, suggest: suggest,
+    };
   }
 
   var api = {
@@ -986,6 +1126,8 @@
     findLocation: findLocation,
     findAmount: findAmount,
     findRole: findRole,
+    findSignature: findSignature,
+    findCoordinator: findCoordinator,
     findNights: findNights,
     findLink: findLink,
     findTimes: findTimes,

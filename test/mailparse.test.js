@@ -326,6 +326,50 @@ check("quotes the sentence that lists what's covered",
 check("an ordinary confirmation has no third-party payer",
   M.findReimbursement("Your registration is confirmed. See you in June."), null);
 
+// -------------------------------------------------- your own signature
+
+var SIG = [
+  "We look forward to seeing you in St. Louis!",
+  "Accelerating Innovation Team",
+  "FHWA | Office of Infrastructure",
+  "U.S. Department of Transportation",
+  "",
+  "Matthew Miller, CPM",
+  "Director of New and Emerging Transportation Technologies",
+  "Systems Operations Division",
+  "Iowa Department of Transportation",
+  "800 Lincoln Way",
+  "Ames, IA 50010",
+].join("\n");
+
+var sig = M.findSignature(SIG, "Matthew Miller");
+check("division from your own signature", sig.division, "Systems Operations");
+check("home city from your own signature", sig.city, "Ames");
+check("does not adopt the sender's org", sig.bureau, "");
+check("no name, no guessing", M.findSignature(SIG, ""), null);
+check("a different person's signature is not yours",
+  M.findSignature(SIG, "Keri Greenfield"), null);
+check("surname-first signatures still match",
+  M.findSignature("Miller, Matthew\nTraffic Operations Bureau\n", "Matthew Miller").bureau,
+  "Traffic Operations");
+check("Bureau of X form",
+  M.findSignature("Jane Doe\nBureau of Local Systems\n", "Jane Doe").bureau,
+  "Local Systems");
+
+// ------------------------------------------------------- who it goes back to
+
+check("the coordinator named on a travel form",
+  M.findCoordinator("Please return this form & meeting link, if available, in email to Keri.Greenfield@iowadot.us"),
+  "Keri.Greenfield@iowadot.us");
+check("survives the letter-spacing a PDF adds inside an address",
+  M.findCoordinator("Please return this form & meeting link, if available, in email to   Keri . Greenfield @iowadot.us"),
+  "Keri.Greenfield@iowadot.us");
+check("clean text is not mangled by the loose fallback",
+  M.findCoordinator("Send it to jane@x.gov. Bob also helps."), "jane@x.gov");
+check("ignores a no-reply address",
+  M.findCoordinator("Please reply to noreply@eventleaf.com"), "");
+check("nothing to offer", M.findCoordinator("Thanks for registering."), "");
+
 // ------------------------------------------------------------------- code
 
 check("registration code", M.findCode("Code: MV59BR3A"), "MV59BR3A");

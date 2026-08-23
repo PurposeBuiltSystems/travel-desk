@@ -731,14 +731,6 @@
         if (dt) { received = new Date(dt).toISOString(); }
       } catch (e) { /* a missing timestamp only costs the past-date filter */ }
 
-      var pre = TdMail.buildPrefill({
-        subject: item.subject || "",
-        body: body,
-        receivedIso: received,
-        homeCity: (settings().homeCity || ""),
-        attachments: scanned,
-      });
-
       // The traveler is almost always the person reading the mail, and Outlook
       // already knows their name - there is no reason to make them type it.
       // Settings win when they exist, because a coordinator filing on someone
@@ -746,7 +738,28 @@
       var s = settings();
       var me = "";
       try { me = (Office.context.mailbox.userProfile || {}).displayName || ""; } catch (e) { me = ""; }
-      if (s.name || me) { pre.fields.name = s.name || me; pre.sources.name = s.name ? "your settings" : "your Outlook profile"; }
+      var myName = s.name || me;
+      // Your own domain is what separates your travel coordinator from the
+      // conference's organizer when both are named in the same message.
+      var myDomain = "";
+      try {
+        var addr = (Office.context.mailbox.userProfile || {}).emailAddress || "";
+        myDomain = (addr.split("@")[1] || "").toLowerCase();
+      } catch (e) { myDomain = ""; }
+
+      var pre = TdMail.buildPrefill({
+        subject: item.subject || "",
+        body: body,
+        receivedIso: received,
+        homeCity: (s.homeCity || ""),
+        myName: myName,
+        myDomain: myDomain,
+        attachments: scanned,
+      });
+
+      if (myName) { pre.fields.name = myName; pre.sources.name = s.name ? "your settings" : "your Outlook profile"; }
+      // Saved settings outrank the signature block: you have already corrected
+      // these once, and a signature is only ever an inference.
       ["costCenter", "division", "bureau"].forEach(function (k) {
         if (s[k]) { pre.fields[k] = s[k]; pre.sources[k] = "your settings"; }
       });
@@ -880,9 +893,65 @@
       box.appendChild(ul2);
     }
 
+    renderSuggestions(pre.suggest || {});
+
     if (scanned.length) { note("Read: " + scanned.map(function (a) { return a.name; }).join(", ")); }
     if (skipped.length) { note("Not read: " + skipped.join("; ")); }
     (pre.notes || []).forEach(function (n) { note(n); });
+  }
+
+  /**
+   * Settings the message revealed, offered as a button rather than applied.
+   *
+   * The coordinator's address and your home city are not facts about this
+   * trip — they persist and shape every future one. Writing them silently
+   * from one email would mean a stray "send this to Jane" line quietly
+   * redirecting your travel paperwork, and you would have no reason to look.
+   */
+  function renderSuggestions(sug) {
+    var box = byId("fillReport");
+    if (!box) { return; }
+    var s = settings();
+    var offers = [];
+    if (sug.coordEmail && sug.coordEmail !== s.coordEmail) {
+      offers.push({
+        key: "coordEmail", value: sug.coordEmail,
+        label: (s.coordEmail ? "Change your travel coordinator to " : "Set your travel coordinator to ") +
+          sug.coordEmail,
+      });
+    }
+    if (sug.homeCity && sug.homeCity !== s.homeCity) {
+      offers.push({
+        key: "homeCity", value: sug.homeCity,
+        label: "Remember that you're based in " + sug.homeCity,
+      });
+    }
+    if (!offers.length) { return; }
+
+    var h = document.createElement("p");
+    h.className = "f-head";
+    h.textContent = "Worth saving — this changes settings, so it's your call:";
+    box.appendChild(h);
+    var wrap = document.createElement("div");
+    wrap.className = "f-alt";
+    offers.forEach(function (o) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.textContent = o.label;
+      b.addEventListener("click", function () {
+        var patch = {};
+        patch[o.key] = o.value;
+        saveSettings(patch);
+        if (o.key === "coordEmail") { setVal("coordEmail", o.value); }
+        b.disabled = true;
+        b.textContent = "Saved ✓";
+        setStatus("info", "Saved. " + (o.key === "coordEmail"
+          ? "Travel Authorization drafts will be addressed to " + o.value + "."
+          : "Your own city won't be offered as a destination again."));
+      });
+      wrap.appendChild(b);
+    });
+    box.appendChild(wrap);
   }
 
   function openPlannerSetup() {

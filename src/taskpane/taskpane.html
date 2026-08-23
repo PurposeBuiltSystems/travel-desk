@@ -13,7 +13,7 @@
   <!-- JSZip: packages the generated planner workbook client-side -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-  <link rel="stylesheet" href="taskpane.css?v=35" />
+  <link rel="stylesheet" href="taskpane.css?v=36" />
 </head>
 <body>
   <header class="app-head">
@@ -26,6 +26,9 @@
     <button id="signIn" class="linkish" type="button" hidden>Sign in</button>
     <button id="signOut" class="linkish" type="button" hidden>Sign out</button>
   </div>
+  <!-- Kept at the top on purpose: this is the first thing to check when a fix
+       appears to have no effect, so it must never need scrolling to. -->
+  <p id="paneVersion" class="hint" style="text-align:right;margin:2px 0 6px;opacity:.7"></p>
 
   <div id="firstRun" class="firstrun" hidden></div>
 
@@ -72,7 +75,6 @@
     </details>
   </section>
 
-  <p id="paneVersion" class="hint" style="text-align:right;margin:2px 0 6px;opacity:.7"></p>
   <details id="setup" class="options">
     <summary>Setup (once) — connect the planner, or paste your traveler code</summary>
     <div class="fastpath">
@@ -315,10 +317,10 @@
 
   <section id="status" class="status" hidden></section>
 
-  <script src="../form.js?v=35"></script>
-  <script src="../xlsxgen.js?v=35"></script>
-  <script src="../coord.js?v=35"></script>
-  <script src="../graph.js?v=35"></script>
-  <script src="taskpane.js?v=35"></script>
+  <script src="../form.js?v=36"></script>
+  <script src="../xlsxgen.js?v=36"></script>
+  <script src="../coord.js?v=36"></script>
+  <script src="../graph.js?v=36"></script>
+  <script src="taskpane.js?v=36"></script>
 </body>
 </html>

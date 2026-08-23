@@ -900,17 +900,29 @@
 
     // "Name & Cost Center: Matthew Miller, 471-0000"
     if (out._nameCost) {
-      var parts = out._nameCost.split(/\s*[,;]\s*|\s+-\s+/);
       // The combined label owns both halves. The standalone "Cost Center"
       // pattern also matches inside "Name & Cost Center:", so leaving its
       // result in place puts the person's name in the cost-center box.
-      if (parts.length > 1) {
-        out.costCenter = parts[parts.length - 1].trim();
-        out.name = parts.slice(0, -1).join(", ").trim();
+      //
+      // Split on the CODE, not on the last comma: "Miller, Matthew 300000" is
+      // written surname-first as often as not, and taking everything after the
+      // final comma makes the cost center "Matthew 300000".
+      var v = out._nameCost.trim();
+      var code = /(?:^|[\s,;:])([0-9][0-9.\-]*[0-9])\s*$/.exec(v);
+      if (code) {
+        out.costCenter = code[1];
+        out.name = v.slice(0, code.index).replace(/[\s,;:\-]+$/, "").trim();
       } else {
-        out.name = out._nameCost;
-        if (out.costCenter === out._nameCost) { delete out.costCenter; }
+        var parts = v.split(/\s*[,;]\s*|\s+-\s+/);
+        if (parts.length > 1) {
+          out.costCenter = parts[parts.length - 1].trim();
+          out.name = parts.slice(0, -1).join(", ").trim();
+        } else {
+          out.name = v;
+          if (out.costCenter === v) { delete out.costCenter; }
+        }
       }
+      if (!out.name) { delete out.name; }
       delete out._nameCost;
     }
 

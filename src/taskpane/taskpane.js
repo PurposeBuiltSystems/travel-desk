@@ -242,6 +242,24 @@
     on("fillFromEmail", "click", fillFromEmail);
     on("profileCopy", "click", profileCopy);
     on("inviteSend", "click", sendInvites);
+    /*
+     * Who you are sticks the moment you type it, not when you submit.
+     *
+     * Name, cost center, division and bureau were only persisted inside
+     * submit(). So typing your cost center and then doing anything else -
+     * reopening the pane, reloading after an update, or simply not finishing
+     * that request - silently discarded it, and the next visit showed the old
+     * value with no sign anything had been lost. These are four facts about
+     * you that never change; there is no reason to make completing a whole
+     * travel request the price of recording them.
+     */
+    ["name", "costCenter", "division", "bureau"].forEach(function (k) {
+      on(k, "change", function () {
+        var patch = {};
+        patch[k] = val(k).trim();
+        saveSettings(patch);
+      });
+    });
     ORG_FIELDS.forEach(function (k) {
       on(k, "change", function () {
         var patch = {};

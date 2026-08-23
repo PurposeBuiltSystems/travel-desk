@@ -410,6 +410,20 @@ var FILLED = "Travel Authorization Form  " +
 var ff = M.formFields(FILLED);
 check("cost center off the form", ff.costCenter, "471-0000");
 check("and the name beside it", ff.name, "Matthew Miller");
+
+// Surname-first with no comma before the code is at least as common, and
+// splitting on the last comma there makes the cost center "Matthew 300000".
+function nameCost(v) {
+  return M.formFields(
+    "Name & C ost Center: " + v +
+    "  Other Staff Attending: none  Name of Conference: X Summit  Location: Ames, IA");
+}
+check("surname-first, space before the code", nameCost("Miller, Matthew 300000").costCenter, "300000");
+check("and the name is kept whole", nameCost("Miller, Matthew 300000").name, "Miller, Matthew");
+check("plain name then code", nameCost("Matthew Miller 300000").costCenter, "300000");
+check("comma before the code", nameCost("Matthew Miller, 300000").costCenter, "300000");
+check("a name with no code at all", nameCost("Matthew Miller").costCenter, undefined);
+check("and that name still comes through", nameCost("Matthew Miller").name, "Matthew Miller");
 check("other staff", ff.otherStaff, "Wes Musgrove, Keri Greenfield");
 check("conference name", ff.event, "EDC-8 Midwest Peer Exchange");
 check("location", ff.location, "St. Louis, MO");

@@ -179,10 +179,31 @@ function defaultTargets() {
   return out;
 }
 
+/**
+ * A stray control byte is invisible in every diff and in every review, and it
+ * silences grep — which decides the file is binary and stops reporting matches
+ * at all, so the usual way of finding out something is wrong stops working
+ * exactly when you need it. One reached a string literal in mailparse.js and
+ * would have shipped.
+ */
+function controlBytes(file) {
+  const src = fs.readFileSync(file, "utf8");
+  const out = [];
+  for (let i = 0; i < src.length; i++) {
+    const c = src.charCodeAt(i);
+    if (c < 9 || c === 11 || c === 12 || (c > 13 && c < 32)) {
+      out.push({ name: "control character U+" + ("000" + c.toString(16).toUpperCase()).slice(-4),
+                 line: lineOf(src, i) });
+      if (out.length > 5) { break; }
+    }
+  }
+  return out;
+}
+
 let bad = 0;
 const targets = process.argv.slice(2).length ? process.argv.slice(2) : defaultTargets();
 targets.forEach(function (f) {
-  const issues = analyze(f);
+  const issues = controlBytes(f).concat(analyze(f));
   if (issues.length) {
     bad += issues.length;
     console.log("\n" + f);

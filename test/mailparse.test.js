@@ -370,6 +370,74 @@ check("ignores a no-reply address",
   M.findCoordinator("Please reply to noreply@eventleaf.com"), "");
 check("nothing to offer", M.findCoordinator("Thanks for registering."), "");
 
+// ------------------------------------------------ a filled-in paper form
+
+// Exactly how the real Iowa DOT template extracts out of the PDF, kerning
+// artefacts and all ("C ost Center", "Stat e Vehicle").
+var BLANK_FORM = "Travel Authorization Form  Please return this form & meeting link, " +
+  "if available, in email to   Keri . Greenfield @iowadot.us  " +
+  "Name & C ost Center: __________________________________________  " +
+  "Other Staff Attending: ________________________________________  " +
+  "Name of Conference: ___________________________________________  " +
+  "Location: _____________________________________________________  " +
+  "Conference Dates & Times: _____________________________________  " +
+  "Departure Date: _______________________________________________  " +
+  "Return Date: __________________________________________________  " +
+  "Reason for Travel (describe event and why you should be attending):  ______  " +
+  "Mode of Travel (check ALL that apply):  Personal Vehicle:   Stat e Vehicle:  " +
+  "Cost of Travel Mode (miles, estimated flight cost): $ ____________  " +
+  "Luggage Fees: $ ________________  Parking: $ _________________  " +
+  "Lodging: ________ nights @ $ __________   = $ ____________  " +
+  "Registration Fee: $ ________________";
+
+check("a blank template yields nothing at all",
+  JSON.stringify(M.formFields(BLANK_FORM)), "{}");
+
+var FILLED = "Travel Authorization Form  " +
+  "Name & C ost Center: Matthew Miller, 471-0000  " +
+  "Other Staff Attending: Wes Musgrove, Keri Greenfield  " +
+  "Name of Conference: EDC-8 Midwest Peer Exchange  " +
+  "Location: St. Louis, MO  " +
+  "Conference Dates & Times: October 15, 2026, 8am-5pm  " +
+  "Departure Date: October 14, 2026  " +
+  "Return Date: October 16, 2026  " +
+  "Cost of Travel Mode (miles, estimated flight cost): $ 410.00  " +
+  "Luggage Fees: $ 70.00  Parking: $ 24.00  " +
+  "Lodging: 2 nights @ $ 150.00   = $ 300.00  " +
+  "Registration Fee: $ 0.00  Taxi/Uber Fees: $ 55.00  " +
+  "Maximum Reimbursement Amount: $ 900.00";
+
+var ff = M.formFields(FILLED);
+check("cost center off the form", ff.costCenter, "471-0000");
+check("and the name beside it", ff.name, "Matthew Miller");
+check("other staff", ff.otherStaff, "Wes Musgrove, Keri Greenfield");
+check("conference name", ff.event, "EDC-8 Midwest Peer Exchange");
+check("location", ff.location, "St. Louis, MO");
+check("departure date is parsed to a real date", ff.departDate, "2026-10-14");
+check("return date", ff.returnDate, "2026-10-16");
+check("travel mode cost", ff.cTravelMode, 410);
+check("luggage", ff.cLuggage, 70);
+check("parking", ff.cParking, 24);
+check("taxi", ff.cTaxi, 55);
+check("lodging nights", ff.cLodgingNights, 2);
+check("nightly rate", ff.cLodgingRate, 150);
+check("max reimbursement", ff.tp1Max, 900);
+check("a zero registration fee is not treated as a value", ff.cRegistration, undefined);
+
+// A filled form must beat anything inferred from the covering email's prose.
+var pre6 = M.buildPrefill({
+  subject: "Fw: Registration Confirmation",
+  body: "Registration fee: $675.00. Event dates October 6-8, 2026 in Denver, CO.",
+  receivedIso: "2026-08-23T12:20:00Z",
+  attachments: [{ name: "Travel Authorization Request.pdf", text: FILLED }],
+});
+check("the filled form wins on location", pre6.fields.location, "St. Louis, MO");
+check("the filled form wins on dates", pre6.fields.departDate, "2026-10-14");
+check("and says the form is where it came from",
+  /filled-in form/.test(pre6.sources.location), true);
+check("the email still supplies what the form left out",
+  pre6.fields.cRegistration, 675);
+
 // ------------------------------------------------------------------- code
 
 check("registration code", M.findCode("Code: MV59BR3A"), "MV59BR3A");

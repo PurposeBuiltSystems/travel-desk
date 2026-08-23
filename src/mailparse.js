@@ -813,6 +813,125 @@
     return out;
   }
 
+  // ------------------------------------------------- a filled-in paper form
+
+  /**
+   * Labels, tolerant of the letter-spacing a PDF leaves behind.
+   *
+   * The real Iowa DOT form extracts as "Name & C ost Center:" — the layout's
+   * kerning becomes literal spaces, and an exact match finds nothing. Allowing
+   * optional whitespace between every character costs nothing and makes the
+   * labels matchable however the generator spaced them.
+   */
+  function looseLabel(s) {
+    return String(s).split("").map(function (c) {
+      if (/\s/.test(c)) { return "\\s*"; }
+      if (/[A-Za-z0-9]/.test(c)) { return c + "\\s*"; }
+      return "\\" + c + "\\s*";
+    }).join("");
+  }
+
+  var FORM_LABELS = [
+    { label: "Name & Cost Center", field: "_nameCost" },
+    { label: "Cost Center", field: "costCenter" },
+    { label: "Other Staff Attending", field: "otherStaff" },
+    { label: "Name of Conference", field: "event" },
+    { label: "Conference Dates & Times", field: "confDates" },
+    { label: "Departure Date", field: "departDate" },
+    { label: "Return Date", field: "returnDate" },
+    { label: "Reason for Travel", field: "reason" },
+    { label: "Cost of Travel Mode", field: "cTravelMode" },
+    { label: "Luggage Fees", field: "cLuggage" },
+    { label: "Registration Fee", field: "cRegistration" },
+    { label: "Taxi/Uber Fees", field: "cTaxi" },
+    { label: "Additional Fees", field: "cAdditional" },
+    { label: "Project Number", field: "tp1Project" },
+    { label: "Maximum Reimbursement Amount", field: "tp1Max" },
+    { label: "Location", field: "location" },
+    { label: "Parking", field: "cParking" },
+  ];
+
+  var MONEY_FIELD = /^(cTravelMode|cLuggage|cParking|cRegistration|cTaxi|cAdditional|tp1Max)$/;
+  var DATE_FIELD = /^(departDate|returnDate)$/;
+
+  /**
+   * Read a filled-in travel form that somebody attached.
+   *
+   * The blank template is all underscores and yields nothing, which is
+   * correct. But the same form comes back filled — a colleague sends theirs
+   * for the planner, or you complete the paper version first — and everything
+   * on it maps onto a field here. A value that is still just underscores or
+   * empty is skipped, so a half-completed form contributes the half that was
+   * filled and stays silent about the rest.
+   */
+  function formFields(text) {
+    var t = clean(text).replace(/_{2,}/g, " ");   // erase the blank rules
+    var out = {};
+
+    // A value runs until the NEXT LABEL, full stop. Relying on the run of
+    // spaces the form puts between fields does not survive clean(), which
+    // collapses whitespace - so every value swallowed the entire rest of the
+    // form. The optional parenthetical is needed because the real template
+    // writes "Cost of Travel Mode (miles, estimated flight cost):".
+    var PAREN = "\\s*(?:\\([^)]{0,60}\\))?\\s*";
+    var STOP = "(?:" +
+      FORM_LABELS.map(function (o) { return looseLabel(o.label); }).join("|") +
+      "|" + looseLabel("Lodging") +
+      "|" + looseLabel("Mode of Travel") +
+      "|" + looseLabel("Reimbursement Items") +
+      "|" + looseLabel("Reimbursement Notes") +
+      ")" + PAREN + "[:\\-]";
+
+    FORM_LABELS.forEach(function (spec) {
+      var rx = new RegExp(looseLabel(spec.label) + PAREN + "[:\\-]\\s*([\\s\\S]{0,140}?)(?=" +
+        STOP + "|\\n|$)", "i");
+      var m = rx.exec(t);
+      if (!m) { return; }
+      var v = m[1].replace(/^[\s$]+/, "").replace(/[\s.:;,\-=]+$/, "").trim();
+      if (!v || v.length < 2) { return; }
+      out[spec.field] = v;
+    });
+
+    // Only trust this if the text really is a form. "Location" and "Parking"
+    // are ordinary words, and a calendar invite's "LOCATION:" line matched one
+    // of them and overruled the invite's own parser. Several labels together
+    // are a form; one on its own is a coincidence.
+    if (Object.keys(out).length < 3) { return {}; }
+
+    // "Name & Cost Center: Matthew Miller, 471-0000"
+    if (out._nameCost) {
+      var parts = out._nameCost.split(/\s*[,;]\s*|\s+-\s+/);
+      // The combined label owns both halves. The standalone "Cost Center"
+      // pattern also matches inside "Name & Cost Center:", so leaving its
+      // result in place puts the person's name in the cost-center box.
+      if (parts.length > 1) {
+        out.costCenter = parts[parts.length - 1].trim();
+        out.name = parts.slice(0, -1).join(", ").trim();
+      } else {
+        out.name = out._nameCost;
+        if (out.costCenter === out._nameCost) { delete out.costCenter; }
+      }
+      delete out._nameCost;
+    }
+
+    // "Lodging: 2 nights @ $150.00 = $300.00"
+    var lodge = new RegExp(looseLabel("Lodging") + "[:\\-]?\\s*(\\d{1,2})\\s*n\\s*i\\s*g\\s*h\\s*t", "i").exec(t);
+    if (lodge) { out.cLodgingNights = parseInt(lodge[1], 10); }
+    var rate = /night[^$\n]{0,20}\$\s*([0-9][0-9,]*(?:\.\d{2})?)/i.exec(t);
+    if (rate) { out.cLodgingRate = toNum(rate[1]); }
+
+    Object.keys(out).forEach(function (k) {
+      if (MONEY_FIELD.test(k)) {
+        var n = toNum(String(out[k]).replace(/^\$/, ""));
+        if (n) { out[k] = n; } else { delete out[k]; }
+      } else if (DATE_FIELD.test(k)) {
+        var d = findDates(String(out[k]));
+        if (d.length) { out[k] = d[0].start; } else { delete out[k]; }
+      }
+    });
+    return out;
+  }
+
   /** "Code: MV59BR3A" / "Confirmation number 4820193" — worth keeping. */
   function findCode(text) {
     var t = clean(text);
@@ -969,6 +1088,14 @@
       return { name: a.name, text: clean(a.text) };
     }));
     var allText = pool.map(function (p) { return p.text; }).join("\n\n");
+
+    // --- a filled-in travel form beats every heuristic in here ---
+    // Somebody typed these values into the fields on purpose. Nothing derived
+    // from prose should be allowed to overrule that.
+    atts.forEach(function (a) {
+      var ff = formFields(a.text);
+      Object.keys(ff).forEach(function (k) { put(k, ff[k], a.name + " (the filled-in form)"); });
+    });
 
     // --- an .ics beats every heuristic in here ---
     var ics = null;
@@ -1128,6 +1255,7 @@
     findRole: findRole,
     findSignature: findSignature,
     findCoordinator: findCoordinator,
+    formFields: formFields,
     findNights: findNights,
     findLink: findLink,
     findTimes: findTimes,

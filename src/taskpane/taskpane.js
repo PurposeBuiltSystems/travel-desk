@@ -1478,29 +1478,26 @@
 
   async function submit() {
     var m = model();
-    var doDraft = byId("doDraft").checked;
-    var doRow = byId("doRow").checked;
+    var doDraft = isChecked("doDraft");
+    var doRow = isChecked("doRow");
     if (!doDraft && !doRow) { setStatus("error", "Pick at least one action."); return; }
     if (!m.name || !m.event || !m.location) {
       setStatus("error", "Name, event, and location are required.");
       return;
     }
     var s = settings();
-    if (doRow && !(s.wbRef || wbRef)) {
-      // Telling someone to "go to the Setup section" is useless when the
-      // controls sit behind two collapsed <details> and the outer one is
-      // labelled for travelers. Open the path and scroll to it instead.
-      openPlannerSetup();
-      setStatus("error", "No planner is connected yet. I've opened Setup below \u2014 " +
-        "use \u201cCreate my planner\u201d, or \u201cShow my files\u201d to connect an existing " +
-        "workbook. Or untick \u201cAdd row to Division planner\u201d to send just the email.");
-      return;
-    }
+    // The email and the planner row are two actions the user ticked
+    // independently. A missing planner used to abort BOTH with an early
+    // return, so a request could produce no email at all while the traveler
+    // believed one had been sent. Now whatever can be done is done, and
+    // whatever cannot is named.
+    var plannerBlocked = doRow && !(s.wbRef || wbRef);
 
-    byId("submit").disabled = true;
+    setProp("submit", "disabled", true);
+    var done = [];
+    var failed = [];
     try {
       var token = await GraphData.getToken();
-      var done = [];
       var orgOpts = {
         orgName: s.orgName || "",
         fundingLabel: s.fundingLabel || "",
@@ -1510,60 +1507,82 @@
       };
 
       if (doDraft) {
-        setStatus("work", "Creating the Travel Authorization draft…");
-        var draft = await GraphData.createDraft(token, byId("coordEmail").value.trim(),
-          TravelForm.subjectLine(m), TravelForm.formHtml(m, orgOpts));
-        done.push("draft OPENED for you — review it and press Send");
-        // Open the draft immediately: "draft created" is not "request sent",
-        // and this is the moment the traveler must press Send.
         try {
-          if (draft && draft.webLink) {
-            Office.context.ui.openBrowserWindow
-              ? Office.context.ui.openBrowserWindow(draft.webLink)
-              : window.open(draft.webLink, "_blank");
-          }
-        } catch (e) { done.push("(open your Drafts folder to send it)"); }
+          setStatus("work", "Creating the Travel Authorization draft…");
+          var draft = await GraphData.createDraft(token, val("coordEmail").trim(),
+            TravelForm.subjectLine(m), TravelForm.formHtml(m, orgOpts));
+          done.push("draft OPENED for you — review it and press Send");
+          // "Draft created" is not "request sent". Open it, because this is
+          // the moment the traveler has to press Send.
+          try {
+            if (draft && draft.webLink) {
+              if (Office.context.ui && Office.context.ui.openBrowserWindow) {
+                Office.context.ui.openBrowserWindow(draft.webLink);
+              } else {
+                window.open(draft.webLink, "_blank");
+              }
+            }
+          } catch (openErr) { done.push("(it's in your Drafts folder)"); }
+        } catch (draftErr) {
+          failed.push("the email draft (" + ((draftErr && draftErr.message) || draftErr) + ")");
+        }
       }
 
-      if (doRow) {
-        setStatus("work", "Adding the planner row…");
-        var tripFy = TravelForm.fiscalLabel(m.eventStart || m.departDate, s.fyStartMonth, s.fyPrefix);
-        var picked = TravelForm.pickPlanner(s.planners, tripFy);
-        var ref, tableName;
-        if (picked) {
-          ref = picked.planner.wbRef;
-          tableName = picked.planner.tableName;
-        } else if (s.planners && Object.keys(s.planners).length) {
-          throw new Error("No planner saved for " + (tripFy || "that date") +
-            " — in Setup, connect that year's workbook and save it for " + tripFy +
-            " (or save one planner as 'all years').");
-        } else {
-          ref = wbRef || s.wbRef; // legacy single-planner setup
-          tableName = s.tableName;
+      if (plannerBlocked) {
+        openPlannerSetup();
+        failed.push("the planner row — no planner is connected. I've opened Setup below: use " +
+          "“Create my planner”, or “Show my files” to connect an existing workbook");
+      } else if (doRow) {
+        try {
+          setStatus("work", "Adding the planner row…");
+          var tripFy = TravelForm.fiscalLabel(m.eventStart || m.departDate, s.fyStartMonth, s.fyPrefix);
+          var picked = TravelForm.pickPlanner(s.planners, tripFy);
+          var ref, tableName;
+          if (picked) {
+            ref = picked.planner.wbRef;
+            tableName = picked.planner.tableName;
+          } else if (s.planners && Object.keys(s.planners).length) {
+            throw new Error("no planner saved for " + (tripFy || "that date") +
+              " — in Setup, connect that year's workbook and save it for " + tripFy +
+              " (or save one planner as 'all years')");
+          } else {
+            ref = wbRef || s.wbRef; // legacy single-planner setup
+            tableName = s.tableName;
+          }
+          var headers = await GraphData.tableHeaders(token, ref, tableName);
+          // One row per traveler: the planner's convention is one line per
+          // person per event, and anything less undercounts a delegation.
+          var rows = TravelForm.plannerRows(headers, m, orgOpts);
+          for (var ri = 0; ri < rows.length; ri++) {
+            if (rows.length > 1) { setStatus("work", "Adding planner row " + (ri + 1) + " of " + rows.length + "…"); }
+            await GraphData.addTableRow(token, ref, tableName, rows[ri]);
+          }
+          done.push(rows.length + (rows.length === 1 ? " row" : " rows (one per traveler)") +
+            " added to " + (picked && picked.key !== "*" ? picked.key + " planner (" : "") +
+            (ref.name || "the planner") + (picked && picked.key !== "*" ? ")" : ""));
+        } catch (rowErr) {
+          failed.push("the planner row (" + ((rowErr && rowErr.message) || rowErr) + ")");
         }
-        var headers = await GraphData.tableHeaders(token, ref, tableName);
-        // One row per traveler: the planner's convention is one line per
-        // person per event, and anything less undercounts a delegation.
-        var rows = TravelForm.plannerRows(headers, m, orgOpts);
-        for (var ri = 0; ri < rows.length; ri++) {
-          if (rows.length > 1) { setStatus("work", "Adding planner row " + (ri + 1) + " of " + rows.length + "…"); }
-          await GraphData.addTableRow(token, ref, tableName, rows[ri]);
-        }
-        done.push(rows.length + (rows.length === 1 ? " row" : " rows (one per traveler)") +
-          " added to " + (picked && picked.key !== "*" ? picked.key + " planner (" : "") +
-          (ref.name || "the planner") + (picked && picked.key !== "*" ? ")" : ""));
       }
 
       saveSettings({ name: m.name, costCenter: m.costCenter, division: m.division, bureau: m.bureau });
-      addTrip(m);
-      setStatus("info", "Done: " + done.join(" + ") + ".");
+      // Record the trip if ANY part succeeded. This previously ran only on a
+      // completely clean pass, so a created draft could leave no trace in
+      // My trips - the traveler had a request the add-in had no memory of.
+      if (done.length) { addTrip(m); }
+
+      if (done.length && !failed.length) {
+        setStatus("ok", "Done: " + done.join(" + ") + ".");
+      } else if (done.length) {
+        setStatus("info", "Done: " + done.join(" + ") + ". NOT done: " + failed.join("; ") + ".");
+      } else {
+        setStatus("error", "Nothing was created. Couldn't do " + failed.join("; ") + ".");
+      }
     } catch (e) {
       setStatus("error", "Travel request failed: " + ((e && e.message) || e) +
-        (byId("doDraft").checked && byId("doRow").checked
-          ? " — if the draft was created, it is still in Drafts; fix and retry with only the failed action ticked."
-          : ""));
+        (done.length ? " — but this did happen: " + done.join(" + ") + "." : ""));
     } finally {
-      byId("submit").disabled = false;
+      setProp("submit", "disabled", false);
     }
   }
 })();

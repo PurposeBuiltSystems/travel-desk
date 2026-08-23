@@ -74,6 +74,68 @@
       .replace(/\n{3,}/g, "\n\n");
   }
 
+  // ------------------------------------------------------------------ links
+
+  /**
+   * Undo the link rewriting that sits between a government mailbox and every
+   * URL in it.
+   *
+   * Proofpoint URL Defense and Outlook Safe Links both replace the real
+   * address with a 400-character wrapper of their own. Store that in "Meeting
+   * / event link" and it is worthless to a human and worse in a printed
+   * authorization form. Both wrappers carry the original inside them, so it
+   * can simply be taken back out.
+   *
+   *   urldefense.proofpoint.com/v2/url?u=https-3A__x.org_a-2Db&d=...
+   *   urldefense.com/v3/__https://x.org/a__;!!token$
+   *   xx.safelinks.protection.outlook.com/?url=https%3A%2F%2Fx.org%2Fa&data=...
+   */
+  function unwrapUrl(url) {
+    var u = String(url || "");
+    for (var pass = 0; pass < 3; pass++) {
+      var before = u;
+      var m = /[?&]u=([^&]+)/.exec(u);
+      if (/urldefense\.(proofpoint\.)?com\/v2\//i.test(u) && m) {
+        // Proofpoint v2: "_" is "/" and "-XX" is a percent-escape with the
+        // "%" written as "-". Restore both, then decode normally.
+        var s = m[1].replace(/_/g, "/").replace(/-([0-9A-Fa-f]{2})/g, "%$1");
+        try { u = decodeURIComponent(s); } catch (e) { u = s; }
+      } else if (/urldefense\.com\/v3\//i.test(u)) {
+        var v3 = /\/v3\/__(.+?)__;/.exec(u);
+        if (v3) { try { u = decodeURIComponent(v3[1]); } catch (e) { u = v3[1]; } }
+      } else if (/safelinks\.protection\.outlook\.com/i.test(u)) {
+        var sl = /[?&]url=([^&]+)/.exec(u);
+        if (sl) { try { u = decodeURIComponent(sl[1]); } catch (e) { u = sl[1]; } }
+      }
+      if (u === before) { break; }
+    }
+    return u.replace(/&amp;/g, "&");
+  }
+
+  /**
+   * The links in an HTML email live in href attributes, which stripping tags
+   * throws away — so scanning the visible text for a URL finds nothing at all
+   * in a professionally built confirmation, where every link is a word like
+   * "Reserve your room". Anchors are collected before the tags come off, each
+   * with the words it was wrapped around, which is also the best available
+   * label for deciding which link is the event.
+   */
+  function hrefs(html) {
+    var out = [];
+    var rx = /<a\b[^>]*?href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    var m;
+    while ((m = rx.exec(String(html || "")))) {
+      var url = unwrapUrl(m[1].replace(/&amp;/g, "&").trim());
+      if (!/^https?:/i.test(url)) { continue; }
+      out.push({
+        url: url,
+        text: m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+        at: m.index,
+      });
+    }
+    return out;
+  }
+
   /** Strip HTML to text, keeping line structure so proximity scoring works. */
   function htmlToText(html) {
     return clean(String(html == null ? "" : html)
@@ -447,6 +509,209 @@
 
   var LINK_CUE = /(agenda|event\s+(site|page|website)|conference\s+(site|website)|register|registration|more\s+information|details|program|venue|schedule|meeting)/i;
 
+  var LINK_JUNK = /(unsubscribe|optout|opt-out|privacy|mailchimp|list-manage|\.png|\.jpg|\.gif|aka\.ms|bookwithme|play\.google|itunes\.apple|microsoft\.com\/.*\/store|calendar\.yahoo|google\.com\/calendar|outlook\.(live|office)\.com|addtocalendar|forms\.gle)/i;
+
+  /**
+   * The event's own page, chosen from the anchors in the message.
+   *
+   * A confirmation is mostly links that are not the event: add-to-calendar for
+   * five different calendars, app-store badges, the unsubscribe, a hotel
+   * booking portal, a Google Form. What distinguishes the real one is that its
+   * anchor text is the event's name — so the event name, once known, is the
+   * strongest signal available, ahead of any keyword list.
+   */
+  function pickLink(anchors, eventName) {
+    var ev = String(eventName || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    var evWords = ev ? ev.split(" ").filter(function (w) { return w.length > 2; }) : [];
+    var best = "", bestScore = -1e9;
+    (anchors || []).forEach(function (a) {
+      if (LINK_JUNK.test(a.url) || LINK_JUNK.test(a.text)) { return; }
+      var score = 0;
+      var txt = a.text.toLowerCase();
+      if (evWords.length) {
+        var hits = evWords.filter(function (w) { return txt.indexOf(w) >= 0; }).length;
+        score += 60 * (hits / evWords.length);
+      }
+      if (LINK_CUE.test(a.text)) { score += 25; }
+      if (/^https?:\/\/[^/]+\/?$/.test(a.url)) { score += 8; }
+      score -= a.url.length / 300;
+      score -= a.at / 200000;
+      if (score > bestScore) { bestScore = score; best = a.url; }
+    });
+    return bestScore > 5 ? best : "";
+  }
+
+  // ------------------------------------------------------------------ times
+
+  var TIME = "(\\d{1,2})(?::(\\d{2}))?\\s*([ap])\\.?m\\.?";
+
+  /**
+   * "8:00 AM - 5:00 PM" out of the message, for the free-text dates field.
+   *
+   * The field's own placeholder is "Jan 10-14, 8am-5pm", so the times are part
+   * of what it is asking for, and a confirmation almost always states them.
+   * A lone time is ignored — "registration opens at 7:00 am" is not the event
+   * running from 7am to nothing.
+   */
+  function findTimes(text) {
+    var t = clean(text);
+    var rx = new RegExp(TIME + "\\s*(?:-|to|until|till|through)\\s*" + TIME, "gi");
+    var m, best = null, bestScore = -1e9;
+    while ((m = rx.exec(t))) {
+      // Scoped to the line the times sit on. A wider window sees the whole
+      // paragraph, so "Registration opens 7-8am" and "the event runs 8-5" on
+      // consecutive lines score identically and the wrong one wins on
+      // position alone.
+      var lineStart = t.lastIndexOf("\n", m.index) + 1;
+      var lineEnd = t.indexOf("\n", m.index);
+      var line = t.slice(lineStart, lineEnd < 0 ? t.length : lineEnd);
+      var score = 0;
+      if (/(time|event|conference|session|runs?|agenda|schedule|program|all\s+day)/i.test(line)) { score += 30; }
+      if (/(registration|check-?in|badge|breakfast|reception|desk\s+opens|doors)/i.test(line)) { score -= 45; }
+      score -= m.index / 100000;
+      if (score > bestScore) { bestScore = score; best = m; }
+    }
+    if (!best) { return ""; }
+    function fmt(h, mm, ap) {
+      return String(parseInt(h, 10)) + (mm && mm !== "00" ? ":" + mm : "") +
+        (ap.toLowerCase() === "a" ? "am" : "pm");
+    }
+    return fmt(best[1], best[2], best[3]) + "-" + fmt(best[4], best[5], best[6]);
+  }
+
+  // -------------------------------------------------- third-party payer
+
+  var REIMB_CUE = /(reimburs|invitational\s+travel|at\s+no\s+cost\s+to|covered\s+by|will\s+pay|directly\s+pay|sponsor(ed|ship)?\s+(your\s+)?travel|we\s+will\s+cover|travel\s+(is\s+)?(fully\s+)?(funded|paid))/i;
+
+  var ACRONYM_STOP = {
+    CAUTION: 1, MUST: 1, NOTE: 1, PDH: 1, FYI: 1, RSVP: 1, HTML: 1, PDF: 1,
+    USA: 1, AM: 1, PM: 1, THE: 1, AND: 1, FOR: 1, YOU: 1, NOT: 1, ALL: 1,
+    NEW: 1, ARE: 1, WILL: 1, FROM: 1, WITH: 1, YOUR: 1, THIS: 1, THAT: 1,
+    INC: 1, LLC: 1, ONLY: 1, FREE: 1,
+  };
+
+  /**
+   * Who else is paying, and for what.
+   *
+   * On invitational or sponsored travel this is the most consequential thing
+   * in the message and the most tedious to re-key: the categories are spelled
+   * out in a sentence, the billing contact is three paragraphs further down,
+   * and getting it wrong means the receivable never gets raised.
+   *
+   * The entity is the shakiest part, so it is derived conservatively — an
+   * acronym that appears near the reimbursement language AND more than once in
+   * the message, which is what distinguishes a sponsor from a passing
+   * reference. Everything else here is quoted directly from the text.
+   */
+  function findReimbursement(text) {
+    var t = clean(text);
+    if (!REIMB_CUE.test(t)) { return null; }
+
+    var cats = {
+      reg: /\bregistration\s+(fee|cost)?s?\b[^.]{0,80}reimburs|reimburs[^.]{0,120}\bregistration\b/i.test(t),
+      lodging: /(hotel|lodging|room|accommodation)[^.]{0,120}(reimburs|cover|paid|pay)|(reimburs|cover|pay)[^.]{0,120}(hotel|lodging|room)/i.test(t),
+      air: /(airfare|air\s+fare|flight|rail|rental\s+car|checked\s+bag|baggage)[^.]{0,140}(reimburs|cover|paid|pay|arrange)|(reimburs|cover|pay|arrange|directly\s+pay)[^.]{0,160}(airfare|rail|rental\s+car|baggage)/i.test(t),
+      meals: /(meal|per\s+diem|m&ie)[^.]{0,120}(allowance|reimburs|cover|paid)|(reimburs|cover|pay)[^.]{0,140}(meal|per\s+diem)/i.test(t),
+      ground: /(local\s+transport|parking|rideshare|taxi|mileage|ground\s+transport)/i.test(t),
+    };
+
+    // The billing contact: a mailbox named where reimbursement or questions
+    // are discussed. A shared address beats a person's - it survives them
+    // changing jobs, which is exactly when a receivable goes unchased.
+    var mails = [], mrx = /\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b/g, mm;
+    while ((mm = mrx.exec(t))) { mails.push({ addr: mm[1], at: mm.index }); }
+    var cueAt = [];
+    var crx = new RegExp(REIMB_CUE.source + "|questions?|contact", "gi");
+    while ((mm = crx.exec(t))) { cueAt.push(mm.index); }
+    var contact = "";
+    var bestD = 1e9;
+    mails.forEach(function (e) {
+      if (/(noreply|no-reply|donotreply|notify|unsubscribe|@eventleaf|@mailchimp)/i.test(e.addr)) { return; }
+      cueAt.forEach(function (c) {
+        var d = Math.abs(c - e.at);
+        var shared = !/\./.test(e.addr.split("@")[0]) ? 400 : 0;   // innovation@ beats jane.doe@
+        if (d - shared < bestD) { bestD = d - shared; contact = e.addr; }
+      });
+    });
+
+    // Entity: an acronym used near the money language and more than once.
+    var counts = {}, arx = /\b([A-Z]{2,6})\b(?!-\d)/g;
+    while ((mm = arx.exec(t))) {
+      if (ACRONYM_STOP[mm[1]]) { continue; }
+      counts[mm[1]] = (counts[mm[1]] || 0) + 1;
+    }
+    var entity = "", entScore = 0;
+    arx.lastIndex = 0;
+    while ((mm = arx.exec(t))) {
+      var tok = mm[1];
+      if (ACRONYM_STOP[tok] || counts[tok] < 2) { continue; }
+      var nearCue = cueAt.some(function (c) { return Math.abs(c - mm.index) < 700; });
+      if (!nearCue) { continue; }
+      if (counts[tok] > entScore) { entScore = counts[tok]; entity = tok; }
+    }
+
+    var any = cats.reg || cats.lodging || cats.air || cats.meals || cats.ground;
+    if (!any && !contact) { return null; }
+    return {
+      entity: entity, contact: contact, categories: cats,
+      snippet: quoteSentence(t, /reimburs\w*/i) ||
+        quoteSentence(t, /directly\s+pay|covered\s+by|at\s+no\s+cost\s+to/i) ||
+        quoteSentence(t, REIMB_CUE),
+    };
+  }
+
+  /**
+   * The sentence a match sits in, trimmed to something quotable.
+   *
+   * Taking a fixed window around the first cue quotes whatever happens to be
+   * next to it — here, a section heading two paragraphs above the sentence
+   * that actually promises the money. The source line is the whole point of
+   * showing it, so it has to be the sentence a person can find in the email.
+   */
+  var COST_WORD = /(hotel|lodging|room|airfare|rail|rental|baggage|bag|meal|per\s+diem|parking|rideshare|mileage|transport|registration|expense)/gi;
+
+  function quoteSentence(text, rx) {
+    var t = String(text);
+    var g = new RegExp(rx.source, rx.flags.indexOf("g") >= 0 ? rx.flags : rx.flags + "g");
+    var m, best = null, bestScore = -1;
+    while ((m = g.exec(t))) {
+      // Several sentences may promise reimbursement; the useful one is the
+      // one that lists what is covered, not the one that says it exists.
+      var win = t.slice(m.index, m.index + 200);
+      var n = (win.match(COST_WORD) || []).length;
+      if (n > bestScore) { bestScore = n; best = m; }
+      if (g.lastIndex === m.index) { g.lastIndex++; }
+    }
+    if (!best) { return ""; }
+    m = best;
+    var start = Math.max(
+      t.lastIndexOf(". ", m.index) + 1,
+      t.lastIndexOf("\n", m.index) + 1,
+      t.lastIndexOf(": ", m.index) + 1
+    );
+    var stop = t.length;
+    [". ", "\n"].forEach(function (d) {
+      var i = t.indexOf(d, m.index);
+      if (i >= 0 && i < stop) { stop = i + (d === ". " ? 1 : 0); }
+    });
+    var s = t.slice(start, Math.min(stop, start + 160)).replace(/\s+/g, " ").trim();
+    return s.length > 150 ? s.slice(0, 147) + "…" : s;
+  }
+
+  /** "Code: MV59BR3A" / "Confirmation number 4820193" — worth keeping. */
+  function findCode(text) {
+    var t = clean(text);
+    var rx = /\b(?:confirmation|registration|reference|booking|event|attendee)?\s*(?:code|number|#|no\.?|id)\s*:?\s*\*?\*?\s*([A-Z0-9][A-Z0-9-]{5,17})\b/gi;
+    var m;
+    while ((m = rx.exec(t))) {
+      var c = m[1];
+      if (!/\d/.test(c) || !/[A-Z]/i.test(c)) { continue; }   // needs both
+      if (/^\d{5}(-\d{4})?$/.test(c)) { continue; }           // a ZIP code
+      return c;
+    }
+    return "";
+  }
+
   function findLink(text) {
     var t = clean(text);
     var rx = /https?:\/\/[^\s<>")\]]+/g;
@@ -571,8 +836,9 @@
   function buildPrefill(input) {
     var inp = input || {};
     var subject = String(inp.subject || "");
-    var bodyText = /<[a-z][\s\S]*>/i.test(inp.body || "")
-      ? htmlToText(inp.body) : clean(inp.body || "");
+    var isHtml = /<[a-z][\s\S]*>/i.test(inp.body || "");
+    var bodyText = isHtml ? htmlToText(inp.body) : clean(inp.body || "");
+    var anchors = isHtml ? hrefs(inp.body) : [];
     var atts = (inp.attachments || []).filter(function (a) { return a && a.text; });
 
     var fields = {}, sources = {}, alternates = {}, notes = [];
@@ -623,7 +889,10 @@
       });
     }
     if (dates.start) {
-      put("confDates", confDatesLine(dates.start, dates.end), sources.eventStart || "the email");
+      var times = "";
+      pool.forEach(function (p) { if (!times) { times = findTimes(p.text); } });
+      var line = confDatesLine(dates.start, dates.end) + (times ? ", " + times : "");
+      put("confDates", line, (sources.eventStart || "the email") + (times ? " + the stated times" : ""));
       // Travel brackets the event by a day at each end — the usual shape, and
       // trivially adjusted. Marked as assumed so nobody mistakes it for stated.
       put("departDate", shiftDays(dates.start, -1), "assumed — the day before the event");
@@ -651,17 +920,55 @@
       });
     });
     if (fields.cLodgingRate) {
+      // Nights follow the TRAVEL dates, not the event's. A one-day event you
+      // fly in for is two hotel nights, and taking the event's own span gives
+      // zero — which then multiplies the room rate out to nothing.
       var nights = findNights(allText, dates.start, dates.end);
-      if (nights) { put("cLodgingNights", nights, dates.end ? "the event dates" : "the email"); }
+      if (!nights && fields.departDate && fields.returnDate) {
+        var span = Math.round(
+          (new Date(fields.returnDate + "T00:00:00") -
+           new Date(fields.departDate + "T00:00:00")) / 864e5);
+        if (span > 0 && span < 30) { nights = span; }
+      }
+      if (nights) { put("cLodgingNights", nights, "the travel dates"); }
     }
 
     // --- role, link ---
     var role = findRole(bodyText);
     if (role) { put("attendeeRole", role, "the email"); }
     if (!fields.meetingLink) {
-      var link = findLink(bodyText);
-      if (link) { put("meetingLink", link, "a link in the email"); }
+      // Anchors first: in a real confirmation every link is a phrase, so the
+      // URL never appears in the visible text at all.
+      var link = pickLink(anchors, fields.event) || findLink(bodyText);
+      if (link) {
+        put("meetingLink", link,
+          /urldefense|safelinks/i.test(link) ? "a link in the email"
+            : "a link in the email" + (anchors.length ? " (unwrapped from the mail filter)" : ""));
+      }
     }
+
+    // --- who else is paying ---
+    var reimb = null;
+    pool.forEach(function (p) { if (!reimb) { reimb = findReimbursement(p.text); } });
+    if (reimb) {
+      var where = 'the email: "' + reimb.snippet + '"';
+      put("tp1Name", reimb.entity, reimb.entity ? where : "");
+      put("tp1Contact", reimb.contact, where);
+      var boxes = {
+        tp1Reg: reimb.categories.reg, tp1Lodging: reimb.categories.lodging,
+        tp1Air: reimb.categories.air, tp1Meals: reimb.categories.meals,
+        tp1Ground: reimb.categories.ground,
+      };
+      Object.keys(boxes).forEach(function (id) { if (boxes[id]) { put(id, true, where); } });
+      notes.push("Someone else is paying for part of this trip — check " +
+        "“Third-party reimbursement #1”, and put the amount in " +
+        "“Max reimbursement” if the email states one." +
+        (reimb.entity ? "" : " It couldn't tell who the payer is; type their name."));
+    }
+
+    // --- registration code, kept as a planner comment ---
+    var code = findCode(bodyText);
+    if (code) { put("comments", "Registration code " + code, "the email"); }
 
     if (!fields.event) { notes.push("Couldn't tell what the event is called — the subject was all boilerplate."); }
     if (!fields.eventStart) { notes.push("No event date found. Confirmations that only say \"see attached\" usually need it typed in."); }
@@ -681,6 +988,12 @@
     findRole: findRole,
     findNights: findNights,
     findLink: findLink,
+    findTimes: findTimes,
+    findReimbursement: findReimbursement,
+    findCode: findCode,
+    unwrapUrl: unwrapUrl,
+    hrefs: hrefs,
+    pickLink: pickLink,
     parseIcs: parseIcs,
     htmlToText: htmlToText,
     confDatesLine: confDatesLine,

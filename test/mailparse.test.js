@@ -259,6 +259,80 @@ var pre5 = M.buildPrefill({
 check("the email beats an attachment", pre5.fields.cRegistration, 675);
 check("and says it came from the email", /the email/.test(pre5.sources.cRegistration), true);
 
+// ------------------------------------------------------------------ links
+
+check("unwraps a Proofpoint v2 link",
+  M.unwrapUrl("https://urldefense.proofpoint.com/v2/url?u=https-3A__www.eventleaf.com_e_edc8midwest&d=DwMGaQ&e="),
+  "https://www.eventleaf.com/e/edc8midwest");
+check("unwraps Proofpoint hyphen-escaped hyphens",
+  M.unwrapUrl("https://urldefense.proofpoint.com/v2/url?u=https-3A__www.hyatt.com_hyatt-2Dregency_en-2DUS_stlrs&d=X"),
+  "https://www.hyatt.com/hyatt-regency/en-US/stlrs");
+check("unwraps Proofpoint v3",
+  M.unwrapUrl("https://urldefense.com/v3/__https://example.org/agenda__;!!abc$"),
+  "https://example.org/agenda");
+check("unwraps Outlook Safe Links",
+  M.unwrapUrl("https://na01.safelinks.protection.outlook.com/?url=https%3A%2F%2Fexample.org%2Fa&data=05"),
+  "https://example.org/a");
+check("leaves an ordinary URL alone",
+  M.unwrapUrl("https://example.org/agenda"), "https://example.org/agenda");
+
+check("finds links that only exist in href attributes",
+  M.hrefs('<p>Register <a href="https://ex.org/e/x">Big Summit</a> now</p>')[0].url,
+  "https://ex.org/e/x");
+
+var ANCH = [
+  { url: "https://www.eventleaf.com/e/edc8midwest", text: "EDC-8 Midwest Peer Exchange", at: 10 },
+  { url: "https://www.hyatt.com/events/group-booking/STLRS", text: "Reserve your room", at: 500 },
+  { url: "https://forms.gle/73ob3poyFYx5AgMA7", text: "Invitational Traveler form", at: 800 },
+  { url: "https://www.google.com/calendar/render?action=TEMPLATE", text: "Google", at: 900 },
+  { url: "https://www.eventleaf.com/Attendee/Unsubscribe?cId=x", text: "Unsubscribe", at: 999 },
+];
+check("picks the event's own page out of a wall of links",
+  M.pickLink(ANCH, "EDC-8 Midwest Peer Exchange"),
+  "https://www.eventleaf.com/e/edc8midwest");
+check("no confident link rather than a wrong one",
+  M.pickLink([{ url: "https://ex.org/unsubscribe", text: "Unsubscribe", at: 1 }], "Some Event"), "");
+
+// ------------------------------------------------------------------ times
+
+check("event times", M.findTimes("Time: 8:00 AM - 5:00 PM"), "8am-5pm");
+check("times with minutes", M.findTimes("The session runs 9:30 am to 4:15 pm"), "9:30am-4:15pm");
+check("ignores the registration desk's hours",
+  M.findTimes("Registration opens 7:00 am to 8:00 am.\nThe event runs 8:00 am to 5:00 pm."),
+  "8am-5pm");
+check("a lone time is not a range", M.findTimes("Doors at 7:00 am."), "");
+
+// --------------------------------------------------------- third-party payer
+
+var INVITE = "Following the event, you may request reimbursement for hotel expenses and " +
+  "authorized out-of-pocket expenses, including local transportation, parking, rideshares, " +
+  "approved mileage, checked baggage fees, and applicable meal allowances. " +
+  "FHWA's authorized travel agent will contact you to arrange and directly pay for approved " +
+  "airfare, rail, and/or rental car reservations. " +
+  "Questions? Contact Maliha Azmat (maliha.azmat@dot.gov). " +
+  "FHWA | Office of Infrastructure | innovation@dot.gov";
+
+var rb = M.findReimbursement(INVITE);
+check("spots that someone else is paying", !!rb, true);
+check("names the payer", rb.entity, "FHWA");
+check("prefers the shared billing address", rb.contact, "innovation@dot.gov");
+check("lodging is covered", rb.categories.lodging, true);
+check("air/rail/baggage is covered", rb.categories.air, true);
+check("meals are covered", rb.categories.meals, true);
+check("ground transport is covered", rb.categories.ground, true);
+check("registration is not claimed to be covered", rb.categories.reg, false);
+check("quotes the sentence that lists what's covered",
+  /request reimbursement for hotel expenses/.test(rb.snippet), true);
+check("an ordinary confirmation has no third-party payer",
+  M.findReimbursement("Your registration is confirmed. See you in June."), null);
+
+// ------------------------------------------------------------------- code
+
+check("registration code", M.findCode("Code: MV59BR3A"), "MV59BR3A");
+check("confirmation number", M.findCode("Confirmation number: A8F32K91"), "A8F32K91");
+check("a ZIP code is not a confirmation code", M.findCode("Ames, IA 50010"), "");
+check("no code present", M.findCode("Thanks for registering."), "");
+
 if (failures) {
   console.error("\n" + failures + " mail-parsing test(s) failed.");
   process.exit(1);

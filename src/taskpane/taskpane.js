@@ -626,13 +626,18 @@
   // ------------------------------------------------ fill from this email
 
   var FILL_LABELS = {
-    event: "Conference / event name", location: "Location",
+    name: "Name", event: "Conference / event name", location: "Location",
     eventStart: "Event start", confDates: "Conference dates",
     departDate: "Departure", returnDate: "Return",
     attendeeRole: "Role", meetingLink: "Meeting / event link",
     cRegistration: "Registration $", cLodgingRate: "Rate / night $",
     cLodgingNights: "Lodging nights", cTravelMode: "Travel mode cost $",
     cParking: "Parking $", cLuggage: "Luggage $",
+    comments: "Planner comments",
+    tp1Name: "3rd party — entity", tp1Contact: "3rd party — billing contact",
+    tp1Reg: "3rd party covers registration", tp1Lodging: "3rd party covers lodging",
+    tp1Air: "3rd party covers airfare/luggage", tp1Meals: "3rd party covers meals",
+    tp1Ground: "3rd party covers ground transport",
   };
 
   /** Promise wrapper — Office.js is callback-only and this reads better. */
@@ -734,6 +739,18 @@
         attachments: scanned,
       });
 
+      // The traveler is almost always the person reading the mail, and Outlook
+      // already knows their name - there is no reason to make them type it.
+      // Settings win when they exist, because a coordinator filing on someone
+      // else's behalf has already said whose trip it is.
+      var s = settings();
+      var me = "";
+      try { me = (Office.context.mailbox.userProfile || {}).displayName || ""; } catch (e) { me = ""; }
+      if (s.name || me) { pre.fields.name = s.name || me; pre.sources.name = s.name ? "your settings" : "your Outlook profile"; }
+      ["costCenter", "division", "bureau"].forEach(function (k) {
+        if (s[k]) { pre.fields[k] = s[k]; pre.sources[k] = "your settings"; }
+      });
+
       applyPrefill(pre, scanned, skipped);
     } catch (err) {
       setStatus("error", "Couldn't read this message: " + (err && err.message ? err.message : err));
@@ -749,8 +766,21 @@
     Object.keys(pre.fields).forEach(function (id) {
       var el = byId(id);
       if (!el) { return; }
-      var current = String(el.value || "").trim();
       var next = pre.fields[id];
+
+      // Checkboxes are booleans, and assigning .value to one sets an attribute
+      // nobody reads while leaving the box unticked - the third-party cost
+      // categories would have looked filled in the report and been empty on
+      // the form.
+      if (el.type === "checkbox") {
+        if (el.checked === !!next) { return; }
+        if (el.checked && !overwrite) { return; }
+        el.checked = !!next;
+        filled.push({ id: id, value: "yes", source: pre.sources[id] || "" });
+        return;
+      }
+
+      var current = String(el.value || "").trim();
       if (current && !overwrite) {
         if (current !== String(next)) { kept.push({ id: id, mine: current, theirs: next }); }
         return;
@@ -758,6 +788,11 @@
       el.value = next;
       filled.push({ id: id, value: next, source: pre.sources[id] || "" });
     });
+
+    // A filled section that is still collapsed reads as not filled at all.
+    if (filled.some(function (f) { return f.id.indexOf("tp1") === 0; })) {
+      setAttrIf("tp1", "open", "open");
+    }
 
     // The costs only re-total on 'input', which assigning .value does not fire.
     try { refreshTotal(); refreshFyLine(); } catch (e) { /* cosmetic */ }

@@ -27,6 +27,7 @@ function has(label, hay, needle) {
 }
 
 function bytes(buf) { return Uint8Array.from(buf); }
+function latin1FromU8(u8) { return Buffer.from(u8).toString("latin1"); }
 
 // ------------------------------------------------------------------- plain
 
@@ -157,6 +158,76 @@ function bytes(buf) { return Uint8Array.from(buf); }
   var j = await A.attachmentText("scanned.pdf", junkPdf);
   check("glyph-index garbage is discarded", j.text, "");
   has("and reported as unreadable", j.note, "no readable text");
+
+  // A subset CID font with /Encoding/Identity-H and a /ToUnicode CMap — what
+  // Word and PDFsharp actually produce, and what the real FHWA invitational
+  // travel guidelines attachment turned out to be. Without following the CMap
+  // this decodes to glyph numbers and gets thrown away.
+  function makeCidPdf(lines) {
+    var text = lines.join("\n");
+    var chars = [], seen = {};
+    text.split("").forEach(function (ch) {
+      if (ch === "\n" || seen[ch]) { return; }
+      seen[ch] = chars.length + 1;       // glyph ids start at 1
+      chars.push(ch);
+    });
+    var bf = chars.map(function (ch, i) {
+      return "<" + ("000" + (i + 1).toString(16)).slice(-4) + "> <" +
+        ("000" + ch.charCodeAt(0).toString(16)).slice(-4) + ">";
+    }).join("\n");
+    var cmap = "/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n" +
+      "1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n" +
+      chars.length + " beginbfchar\n" + bf + "\nendbfchar\nendcmap\nend\nend";
+
+    var content = "BT /F0 12 Tf 72 720 Td\n" + lines.map(function (l) {
+      var hex = l.split("").map(function (ch) {
+        return ("000" + seen[ch].toString(16)).slice(-4);
+      }).join("");
+      return "<" + hex + "> Tj 0 -16 Td";
+    }).join("\n") + "\nET";
+
+    var cmapZ = zlib.deflateSync(Buffer.from(cmap, "latin1"));
+    var contZ = zlib.deflateSync(Buffer.from(content, "latin1"));
+    var parts = [Buffer.from(
+      "%PDF-1.4\n" +
+      "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n" +
+      "2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n" +
+      "3 0 obj<</Type/Page/Parent 2 0 R/Resources<</Font<</F0 4 0 R>>>>/Contents 6 0 R>>endobj\n" +
+      "4 0 obj<</Type/Font/Subtype/Type0/BaseFont/BXNAPB+Calibri/Encoding/Identity-H/ToUnicode 5 0 R>>endobj\n" +
+      "5 0 obj<</Length " + cmapZ.length + "/Filter/FlateDecode>>stream\n", "latin1")];
+    parts.push(cmapZ);
+    parts.push(Buffer.from("\nendstream endobj\n6 0 obj<</Length " + contZ.length +
+      "/Filter/FlateDecode>>stream\n", "latin1"));
+    parts.push(contZ);
+    parts.push(Buffer.from("\nendstream endobj\n%%EOF", "latin1"));
+    return bytes(Buffer.concat(parts));
+  }
+
+  var cid = await A.attachmentText("guidelines.pdf", makeCidPdf([
+    "Instructions for FHWA Invitational Travelers",
+    "The peer exchange is held October 15, 2026 in St. Louis, MO.",
+    "Lodging is reimbursed at the per diem rate of $150.00 per night.",
+    "Contact innovation@dot.gov with any questions about reimbursement.",
+  ]));
+  has("a subset CID font is decoded through its ToUnicode CMap",
+    cid.text, "Instructions for FHWA Invitational Travelers");
+  has("and the body text comes through", cid.text, "St. Louis, MO");
+  check("a date can be read out of a real-world PDF",
+    Mp.eventDates(cid.text, "2026-08-23T12:00:00Z").start, "2026-10-15");
+  check("and the room rate", Mp.findAmount(cid.text, /per\s*night|rate/).value, 150);
+  check("and it is recognised as third-party paid",
+    !!Mp.findReimbursement(cid.text), true);
+
+  // Same file with the CMap removed: the glyph numbers must NOT be presented
+  // as text, because a plausible wrong date on a travel form is the one
+  // outcome worse than an empty field.
+  var noCmap = await A.attachmentText("nocmap.pdf",
+    bytes(Buffer.from(latin1FromU8(makeCidPdf([
+      "Instructions for FHWA Invitational Travelers",
+      "The peer exchange is held October 15, 2026 in St. Louis, MO.",
+    ])).replace("/ToUnicode 5 0 R", "                 "), "latin1")));
+  check("without a CMap the glyph numbers are discarded, not guessed at",
+    noCmap.text, "");
 
   check("prose passes the readability gate",
     A.looksLikeProse("The conference is held in Kansas City, Missouri on October 6 through 8."), true);

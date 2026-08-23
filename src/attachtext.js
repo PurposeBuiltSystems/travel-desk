@@ -213,15 +213,24 @@
     return out;
   }
 
-  /** Pull the shown strings out of one decoded content stream. */
-  function opsToText(content) {
+  /**
+   * Pull the shown strings out of one decoded content stream.
+   *
+   * `fonts` maps a resource name ("F0") to a decoder for that font, because
+   * with a subset CID font the bytes in the string are glyph numbers and mean
+   * nothing without one. The current font is whatever the last "/Fx n Tf"
+   * selected, exactly as the PDF viewer tracks it.
+   */
+  function opsToText(content, fonts) {
     var out = "", line = "";
-    var rx = /\((?:\\[\s\S]|[^\\()])*\)|<[0-9A-Fa-f\s]*>|\bT[Jj]\b|\bT[dDm*]\b|\bTD\b|'|"|\bBT\b|\bET\b/g;
-    var m, pending = [];
+    var rx = /\((?:\\[\s\S]|[^\\()])*\)|<[0-9A-Fa-f\s]*>|\/([A-Za-z0-9#+._-]+)\s+[\d.]+\s+Tf\b|\bT[Jj]\b|\bT[dDm*]\b|\bTD\b|'|"|\bBT\b|\bET\b/g;
+    var m, pending = [], font = null;
+    function decode(bytes) { return font ? font(bytes) : bytes; }
     while ((m = rx.exec(content))) {
       var tok = m[0];
-      if (tok.charAt(0) === "(") { pending.push(unescapePdfString(tok.slice(1, -1))); }
-      else if (tok.charAt(0) === "<" && tok.charAt(1) !== "<") { pending.push(hexPdfString(tok.slice(1, -1))); }
+      if (m[1] !== undefined) { font = (fonts && fonts[m[1]]) || null; continue; }
+      if (tok.charAt(0) === "(") { pending.push(decode(unescapePdfString(tok.slice(1, -1)))); }
+      else if (tok.charAt(0) === "<" && tok.charAt(1) !== "<") { pending.push(decode(hexPdfString(tok.slice(1, -1)))); }
       else if (tok === "Tj" || tok === "TJ" || tok === "'" || tok === '"') {
         line += pending.join(""); pending = [];
         if (tok === "'" || tok === '"') { out += line + "\n"; line = ""; }
@@ -232,6 +241,107 @@
     }
     if (line) { out += line + "\n"; }
     return out;
+  }
+
+  // ------------------------------------------------------- ToUnicode CMaps
+
+  /**
+   * Parse a /ToUnicode CMap into a decoder function.
+   *
+   * This is what makes a normal PDF readable. Word, PDFsharp and most modern
+   * generators embed SUBSET fonts (/BXNAPB+Calibri) with /Encoding/Identity-H,
+   * which means the "text" in the content stream is a list of glyph numbers
+   * private to that one file — "October" might be bytes 0x2F 0x0C 0x11…, and
+   * reading them as characters produces confident nonsense. The generator also
+   * writes a /ToUnicode CMap mapping each glyph number back to real Unicode,
+   * precisely so that text can be copied out. Following it is the difference
+   * between reading agendas and refusing almost every PDF a person will
+   * actually attach.
+   *
+   *   beginbfchar  <0044> <0054>            endbfchar
+   *   beginbfrange <0003> <0008> <0020>     endbfrange
+   *   beginbfrange <0010> <0012> [<0041> <0042> <0043>] endbfrange
+   */
+  function parseCMap(text) {
+    var map = {}, srcBytes = 2, m, rx;
+
+    function uni(hex) {
+      var s = "";
+      for (var i = 0; i + 3 < hex.length + 1; i += 4) {
+        var cp = parseInt(hex.substr(i, 4), 16);
+        if (!isNaN(cp)) { s += String.fromCharCode(cp); }
+      }
+      return s;
+    }
+
+    rx = /begincodespacerange([\s\S]*?)endcodespacerange/g;
+    while ((m = rx.exec(text))) {
+      var cs = /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/.exec(m[1]);
+      if (cs) { srcBytes = Math.max(1, Math.round(cs[1].length / 2)); }
+    }
+
+    rx = /beginbfchar([\s\S]*?)endbfchar/g;
+    while ((m = rx.exec(text))) {
+      var crx = /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]*)>/g, c;
+      while ((c = crx.exec(m[1]))) { map[parseInt(c[1], 16)] = uni(c[2]); }
+    }
+
+    rx = /beginbfrange([\s\S]*?)endbfrange/g;
+    while ((m = rx.exec(text))) {
+      var body = m[1];
+      var lrx = /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*(\[[\s\S]*?\]|<[0-9A-Fa-f]*>)/g, l;
+      while ((l = lrx.exec(body))) {
+        var lo = parseInt(l[1], 16), hi = parseInt(l[2], 16), dst = l[3];
+        if (hi - lo > 65535) { continue; }
+        if (dst.charAt(0) === "[") {
+          var arr = dst.match(/<([0-9A-Fa-f]*)>/g) || [];
+          for (var i = 0; i <= hi - lo && i < arr.length; i++) {
+            map[lo + i] = uni(arr[i].slice(1, -1));
+          }
+        } else {
+          var base = dst.slice(1, -1);
+          var start = parseInt(base.substr(base.length - 4), 16);
+          var prefix = base.slice(0, base.length - 4);
+          for (var j = 0; j <= hi - lo; j++) {
+            map[lo + j] = uni(prefix + ("000" + (start + j).toString(16)).slice(-4));
+          }
+        }
+      }
+    }
+
+    if (!Object.keys(map).length) { return null; }
+    return function (raw) {
+      var out = "";
+      if (srcBytes === 2) {
+        for (var i = 0; i + 1 < raw.length; i += 2) {
+          var code = (raw.charCodeAt(i) << 8) | raw.charCodeAt(i + 1);
+          out += map[code] != null ? map[code] : "";
+        }
+      } else {
+        for (var k = 0; k < raw.length; k++) {
+          var c1 = raw.charCodeAt(k);
+          out += map[c1] != null ? map[c1] : raw.charAt(k);
+        }
+      }
+      return out;
+    };
+  }
+
+  /** `12 0 obj … endobj` → { 12: {dict, streamStart, streamEnd} } */
+  function parseObjects(raw) {
+    var objs = {}, rx = /(\d+)\s+\d+\s+obj\b/g, m;
+    while ((m = rx.exec(raw))) {
+      var end = raw.indexOf("endobj", m.index);
+      if (end < 0) { end = Math.min(raw.length, m.index + 200000); }
+      var seg = raw.slice(m.index, end);
+      var sm = /stream\r\n|stream\n|stream\r/.exec(seg);
+      objs[m[1]] = {
+        dict: sm ? seg.slice(0, sm.index) : seg,
+        streamStart: sm ? m.index + sm.index + sm[0].length : -1,
+        streamEnd: sm ? raw.indexOf("endstream", m.index + sm.index) : -1,
+      };
+    }
+    return objs;
   }
 
   /**
@@ -248,36 +358,112 @@
    */
   async function pdfText(bytes) {
     var raw = latin1(bytes);
-    var out = [];
-    var rx = /stream\r\n|stream\n|stream\r/g;
-    var m;
-    while ((m = rx.exec(raw))) {
-      var start = m.index + m[0].length;
-      var end = raw.indexOf("endstream", start);
-      if (end < 0) { break; }
-      var dict = raw.slice(Math.max(0, m.index - 700), m.index);
-      // Images, fonts and metadata are streams too, and inflating a 4 MB JPEG
-      // to look for dates in it is pure waste.
-      if (/\/Subtype\s*\/(Image|Type1C|TrueType|CIDFontType\dC)\b/.test(dict) ||
-          /\/Type\s*\/(XObject|Font|Metadata|ObjStm)\b/.test(dict) && !/\/Type\s*\/Page\b/.test(dict)) {
-        if (/\/Subtype\s*\/Image\b/.test(dict)) { rx.lastIndex = end; continue; }
-      }
+    var objs = parseObjects(raw);
+
+    /** Decompress one object's stream, or null. */
+    async function streamOf(num) {
+      var o = objs[num];
+      if (!o || o.streamStart < 0 || o.streamEnd < 0) { return null; }
       // The EOL that PDF puts between the data and "endstream" is not part of
       // the compressed data, and zlib treats it as trailing junk.
-      var chunk = raw.slice(start, end).replace(/[\r\n]+$/, "");
-      var body = null;
-      if (/\/FlateDecode/.test(dict)) {
-        var u8 = new Uint8Array(chunk.length);
-        for (var i = 0; i < chunk.length; i++) { u8[i] = chunk.charCodeAt(i) & 255; }
-        var inf = await inflate(u8);
-        if (inf) { body = latin1(inf); }
-      } else if (!/\/(DCTDecode|JPXDecode|CCITTFaxDecode|RunLengthDecode|LZWDecode|ASCII85Decode)/.test(dict)) {
-        body = chunk;
+      var chunk = raw.slice(o.streamStart, o.streamEnd).replace(/[\r\n]+$/, "");
+      if (/\/(DCTDecode|JPXDecode|CCITTFaxDecode|RunLengthDecode|LZWDecode|ASCII85Decode)/.test(o.dict)) { return null; }
+      if (!/\/FlateDecode/.test(o.dict)) { return chunk; }
+      var u8 = new Uint8Array(chunk.length);
+      for (var i = 0; i < chunk.length; i++) { u8[i] = chunk.charCodeAt(i) & 255; }
+      var inf = await inflate(u8);
+      return inf ? latin1(inf) : null;
+    }
+
+    /** "/Resources 7 0 R" and "/Resources <<…>>" both have to work. */
+    function deref(dict, key) {
+      var ref = new RegExp("\\/" + key + "\\s+(\\d+)\\s+\\d+\\s+R\\b").exec(dict);
+      if (ref) { return objs[ref[1]] ? objs[ref[1]].dict : ""; }
+      var i = dict.indexOf("/" + key);
+      if (i < 0) { return ""; }
+      var j = dict.indexOf("<<", i);
+      // The gap is measured from the END of the key, not its start — measuring
+      // from the start makes every key longer than four characters look like a
+      // miss, so "/Resources<<…>>" never resolved and no page had any fonts.
+      if (j < 0 || j - (i + key.length + 1) > 4) { return ""; }
+      var depth = 0;
+      for (var k = j; k < dict.length - 1; k++) {
+        if (dict.substr(k, 2) === "<<") { depth++; k++; }
+        else if (dict.substr(k, 2) === ">>") { depth--; k++; if (!depth) { return dict.slice(j, k + 1); } }
       }
-      if (body && /\bT[Jj]\b/.test(body)) { out.push(opsToText(body)); }
-      rx.lastIndex = end;
+      return dict.slice(j);
+    }
+
+    var cmapCache = {};
+    async function cmapFor(fontNum) {
+      if (cmapCache[fontNum] !== undefined) { return cmapCache[fontNum]; }
+      cmapCache[fontNum] = null;
+      var fd = objs[fontNum] && objs[fontNum].dict;
+      if (!fd) { return null; }
+      var tu = /\/ToUnicode\s+(\d+)\s+\d+\s+R\b/.exec(fd);
+      if (!tu) { return null; }
+      var cm = await streamOf(tu[1]);
+      if (cm) { cmapCache[fontNum] = parseCMap(cm); }
+      return cmapCache[fontNum];
+    }
+
+    var out = [];
+    var pageNums = Object.keys(objs).filter(function (n) {
+      return /\/Type\s*\/Page\b/.test(objs[n].dict) && !/\/Type\s*\/Pages\b/.test(objs[n].dict);
+    });
+
+    for (var p = 0; p < pageNums.length; p++) {
+      var page = objs[pageNums[p]].dict;
+
+      var fonts = {};
+      var fdict = deref(deref(page, "Resources") || page, "Font");
+      var frx = /\/([A-Za-z0-9#+._-]+)\s+(\d+)\s+\d+\s+R\b/g, fm;
+      while ((fm = frx.exec(fdict))) {
+        var cm2 = await cmapFor(fm[2]);
+        if (cm2) { fonts[fm[1]] = cm2; }
+      }
+
+      var contents = [];
+      var single = /\/Contents\s+(\d+)\s+\d+\s+R\b/.exec(page);
+      var arr = /\/Contents\s*\[([^\]]*)\]/.exec(page);
+      if (single) { contents.push(single[1]); }
+      else if (arr) {
+        var arx = /(\d+)\s+\d+\s+R/g, am;
+        while ((am = arx.exec(arr[1]))) { contents.push(am[1]); }
+      }
+
+      for (var c = 0; c < contents.length; c++) {
+        var body = await streamOf(contents[c]);
+        if (body && /\bT[Jj]\b/.test(body)) { out.push(opsToText(body, fonts)); }
+      }
       if (out.join("").length > 400000) { break; }
     }
+
+    // Fall back to a blind stream sweep for PDFs whose page tree we could not
+    // follow — a linearised or object-stream file may hide /Type/Page from a
+    // regex, and finding some text beats finding none.
+    if (!out.join("").trim()) {
+      var srx = /stream\r\n|stream\n|stream\r/g, sm2;
+      while ((sm2 = srx.exec(raw))) {
+        var st = sm2.index + sm2[0].length;
+        var en = raw.indexOf("endstream", st);
+        if (en < 0) { break; }
+        var d = raw.slice(Math.max(0, sm2.index - 700), sm2.index);
+        if (/\/Subtype\s*\/Image\b/.test(d)) { srx.lastIndex = en; continue; }
+        var ch = raw.slice(st, en).replace(/[\r\n]+$/, "");
+        var b2 = null;
+        if (/\/FlateDecode/.test(d)) {
+          var u2 = new Uint8Array(ch.length);
+          for (var q = 0; q < ch.length; q++) { u2[q] = ch.charCodeAt(q) & 255; }
+          var i2 = await inflate(u2);
+          if (i2) { b2 = latin1(i2); }
+        } else if (!/\/(DCTDecode|JPXDecode|CCITTFaxDecode|LZWDecode|ASCII85Decode)/.test(d)) { b2 = ch; }
+        if (b2 && /\bT[Jj]\b/.test(b2)) { out.push(opsToText(b2, null)); }
+        srx.lastIndex = en;
+        if (out.join("").length > 400000) { break; }
+      }
+    }
+
     var text = out.join("\n").replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
     return looksLikeProse(text) ? text : "";
   }
@@ -359,6 +545,8 @@
     pptxText: pptxText,
     looksLikeProse: looksLikeProse,
     opsToText: opsToText,
+    parseCMap: parseCMap,
+    parseObjects: parseObjects,
     _internals: { ext: ext, latin1: latin1, stripXml: stripXml },
   };
   if (typeof module !== "undefined" && module.exports) { module.exports = api; }

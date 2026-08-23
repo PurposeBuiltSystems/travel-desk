@@ -644,7 +644,13 @@
   // ------------------------------------------------ fill from this email
 
   var FILL_LABELS = {
-    name: "Name", event: "Conference / event name", location: "Location",
+    name: "Name", costCenter: "Cost center",
+    division: "Division", bureau: "Bureau",
+    otherStaff: "Other travelers", reason: "Reason for travel",
+    modePersonal: "Personal vehicle", modeState: "State vehicle",
+    modeAir: "Commercial air", cTaxi: "Taxi / rideshare $",
+    tp1Project: "3rd party — project number", tp1Max: "3rd party — max reimbursement $",
+    event: "Conference / event name", location: "Location",
     eventStart: "Event start", confDates: "Conference dates",
     departDate: "Departure", returnDate: "Return",
     attendeeRole: "Role", meetingLink: "Meeting / event link",

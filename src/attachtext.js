@@ -327,6 +327,78 @@
     };
   }
 
+  // ---------------------------------------------------- AcroForm values
+
+  /** A PDF string, literal or hex, possibly UTF-16BE with a byte-order mark. */
+  function pdfValue(s) {
+    var v = String(s || "");
+    if (v.charAt(0) === "(") { v = unescapePdfString(v.slice(1, -1)); }
+    else if (v.charAt(0) === "<") { v = hexPdfString(v.slice(1, -1)); }
+    else { return v.trim(); }
+    if (v.charCodeAt(0) === 0xFE && v.charCodeAt(1) === 0xFF) {
+      var out = "";
+      for (var i = 2; i + 1 < v.length; i += 2) {
+        out += String.fromCharCode((v.charCodeAt(i) << 8) | v.charCodeAt(i + 1));
+      }
+      v = out;
+    }
+    return v.replace(/\r\n?/g, "\n").trim();
+  }
+
+  /**
+   * Read what somebody actually TYPED into a PDF form.
+   *
+   * A fillable PDF keeps its answers in AcroForm field objects, not in the
+   * page's content stream — so extracting the page text of a completed travel
+   * form returns the printed labels and the underscore rules and nothing else,
+   * and the file looks blank when it is fully filled in. This is the whole
+   * reason a filled Iowa DOT authorization read as empty.
+   *
+   * Every object carrying a /T is treated as a field, with its name built from
+   * the /Parent chain, which handles both flat forms and the parent/kid split
+   * Acrobat produces. Checkboxes report their /AS appearance state when they
+   * have no /V, which is how a ticked box that was never "changed" still reads
+   * as ticked.
+   */
+  function acroFormFields(raw, objs) {
+    var byNum = {}, order = [];
+    Object.keys(objs).forEach(function (n) {
+      var d = objs[n].dict;
+      if (!/\/T\s*[(<]/.test(d)) { return; }
+      var t = /\/T\s*(\([\s\S]*?\)|<[0-9A-Fa-f\s]*>)/.exec(d);
+      if (!t) { return; }
+      var v = /\/V\s*(\([\s\S]*?\)|<[0-9A-Fa-f\s]*>|\/[A-Za-z0-9#._-]+)/.exec(d);
+      var as = /\/AS\s*\/([A-Za-z0-9#._-]+)/.exec(d);
+      var tu = /\/TU\s*(\([\s\S]*?\)|<[0-9A-Fa-f\s]*>)/.exec(d);
+      var parent = /\/Parent\s+(\d+)\s+\d+\s+R\b/.exec(d);
+      byNum[n] = {
+        name: pdfValue(t[1]),
+        tip: tu ? pdfValue(tu[1]) : "",
+        value: v ? pdfValue(v[1]) : (as ? "/" + as[1] : ""),
+        parent: parent ? parent[1] : null,
+      };
+      order.push(n);
+    });
+
+    var out = [];
+    order.forEach(function (n) {
+      var f = byNum[n];
+      if (!f.value) { return; }
+      var parts = [f.name], p = f.parent, guard = 0;
+      while (p && byNum[p] && guard++ < 8) { parts.unshift(byNum[p].name); p = byNum[p].parent; }
+      var label = f.tip || parts.filter(Boolean).join(" ");
+      var val = f.value;
+      if (val.charAt(0) === "/") {
+        // A checkbox: /Off is unticked, anything else is the "on" state.
+        if (/^\/Off$/i.test(val)) { return; }
+        val = "checked";
+      }
+      if (!label || !val) { return; }
+      out.push({ label: label, value: val });
+    });
+    return out;
+  }
+
   /** `12 0 obj … endobj` → { 12: {dict, streamStart, streamEnd} } */
   function parseObjects(raw) {
     var objs = {}, rx = /(\d+)\s+\d+\s+obj\b/g, m;
@@ -465,7 +537,20 @@
     }
 
     var text = out.join("\n").replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
-    return looksLikeProse(text) ? text : "";
+    if (!looksLikeProse(text)) { text = ""; }
+
+    // Typed answers are appended whatever happened to the page text, and are
+    // NOT subject to the prose gate — they are field values, not rendered
+    // glyphs, so a scanned or subset-font page cannot make them unreadable.
+    // They go last so "Location: St. Louis" from a field beats a stray match
+    // in the page's own boilerplate.
+    var filled = acroFormFields(raw, objs);
+    if (filled.length) {
+      text += (text ? "\n\n" : "") + filled.map(function (f) {
+        return f.label + ": " + f.value;
+      }).join("\n");
+    }
+    return text;
   }
 
   /**

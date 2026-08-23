@@ -229,6 +229,76 @@ function latin1FromU8(u8) { return Buffer.from(u8).toString("latin1"); }
   check("without a CMap the glyph numbers are discarded, not guessed at",
     noCmap.text, "");
 
+  // A FILLED fillable form. The answers live in AcroForm field objects, never
+  // in the page content — extracting only the page text of Matt's completed
+  // Iowa DOT authorization returned the printed labels and underscore rules,
+  // so a fully filled form read as blank.
+  function makeAcroPdf(fields, pageText) {
+    var content = "BT /F1 12 Tf 72 720 Td (" +
+      pageText.replace(/([()\\])/g, "\\$1") + ") Tj ET";
+    var objs = [
+      "1 0 obj<</Type/Catalog/Pages 2 0 R/AcroForm<</Fields[" +
+        fields.map(function (_, i) { return (5 + i) + " 0 R"; }).join(" ") + "]>>>>endobj",
+      "2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj",
+      "3 0 obj<</Type/Page/Parent 2 0 R/Contents 4 0 R/Annots[" +
+        fields.map(function (_, i) { return (5 + i) + " 0 R"; }).join(" ") + "]>>endobj",
+      "4 0 obj<</Length " + content.length + ">>stream\n" + content + "\nendstream endobj",
+    ];
+    fields.forEach(function (f, i) {
+      objs.push((5 + i) + " 0 obj<</Type/Annot/Subtype/Widget/FT/" +
+        (f.check ? "Btn" : "Tx") + "/T(" + f.name + ")" +
+        (f.check ? "/AS/" + f.check : "/V" + (f.hex ? "<" + f.hex + ">" : "(" + f.value + ")")) +
+        ">>endobj");
+    });
+    return bytes(Buffer.from("%PDF-1.4\n" + objs.join("\n") + "\n%%EOF", "latin1"));
+  }
+
+  var acro = await A.attachmentText("Travel Authorization Request.pdf", makeAcroPdf([
+    { name: "Name & Cost Center", value: "Matthew Miller 30000" },
+    { name: "Other Staff Attending", value: "Cedric Wilkinson, Brian Worrel, Tony Gustafson" },
+    { name: "Name of Conference", value: "EDC-8 Midwest Peer Exchange" },
+    { name: "Location", value: "Hyatt Regency 315 Chestnut St, St. Louis, MO 63102" },
+    { name: "Conference Dates & Times", value: "10/15/26 7:00 am to 5:00 pm" },
+    { name: "Departure Date", value: "10/14/2026" },
+    { name: "Return Date", value: "10/15/2026" },
+    { name: "Reason for Travel", value: "Matt is lead for Connected Corridors for Iowa." },
+    { name: "Personal Vehicle", check: "Off" },
+    { name: "State Vehicle", check: "Yes" },
+    { name: "Commercial Air", check: "Off" },
+    { name: "Cost of Travel Mode", value: "770 miles" },
+    { name: "Parking", value: "40" },
+    { name: "Luggage Fees", value: "0" },
+  ], "Travel Authorization Form Name & Cost Center: ______ Departure Date: ______"));
+
+  has("typed field values are read", acro.text, "Matthew Miller 30000");
+  has("and the conference name", acro.text, "EDC-8 Midwest Peer Exchange");
+  has("a ticked box is reported", acro.text, "State Vehicle: checked");
+  check("an unticked box is not", /Personal Vehicle: checked/.test(acro.text), false);
+
+  var af = Mp.formFields(acro.text);
+  check("cost center out of a filled PDF", af.costCenter, "30000");
+  check("name out of a filled PDF", af.name, "Matthew Miller");
+  check("other staff", af.otherStaff, "Cedric Wilkinson, Brian Worrel, Tony Gustafson");
+  check("conference", af.event, "EDC-8 Midwest Peer Exchange");
+  check("departure date", af.departDate, "2026-10-14");
+  check("return date", af.returnDate, "2026-10-15");
+  check("reason for travel", af.reason, "Matt is lead for Connected Corridors for Iowa");
+  check("state vehicle ticked", af.modeState, true);
+  check("personal vehicle untouched", af.modePersonal, undefined);
+  check("parking", af.cParking, 40);
+  check("mileage figure is taken as entered", af.cTravelMode, 770);
+  check("a venue's postal address is reduced to the destination",
+    af.location, "St. Louis, MO");
+
+  // Acrobat writes text as UTF-16BE with a byte-order mark often enough that
+  // ignoring it would drop every value on some files.
+  var utf16 = await A.attachmentText("utf16.pdf", makeAcroPdf([
+    { name: "Name of Conference", hex: "FEFF00450044004300" + "2D0038" },
+    { name: "Departure Date", value: "10/14/2026" },
+    { name: "Parking", value: "40" },
+  ], "form"));
+  has("UTF-16BE field values decode", utf16.text, "EDC-8");
+
   check("prose passes the readability gate",
     A.looksLikeProse("The conference is held in Kansas City, Missouri on October 6 through 8."), true);
   check("a wall of symbols does not",

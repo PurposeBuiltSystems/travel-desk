@@ -851,6 +851,20 @@
     { label: "Parking", field: "cParking" },
   ];
 
+  // Ticked boxes on the form. A filled PDF reports these as its appearance
+  // state, so they arrive as "State Vehicle: checked" alongside the text
+  // fields rather than as prose to be interpreted.
+  var FORM_CHECKS = [
+    { label: "Personal Vehicle", field: "modePersonal" },
+    { label: "State Vehicle", field: "modeState" },
+    { label: "Commercial Air", field: "modeAir" },
+    { label: "Registration Fees", field: "tp1Reg" },
+    { label: "Lodging/Hotel Costs", field: "tp1Lodging" },
+    { label: "Airfare/Luggage Fees", field: "tp1Air" },
+    { label: "Meals", field: "tp1Meals" },
+    { label: "Ground Transportation Costs", field: "tp1Ground" },
+  ];
+
   var MONEY_FIELD = /^(cTravelMode|cLuggage|cParking|cRegistration|cTaxi|cAdditional|tp1Max)$/;
   var DATE_FIELD = /^(departDate|returnDate)$/;
 
@@ -883,13 +897,23 @@
       ")" + PAREN + "[:\\-]";
 
     FORM_LABELS.forEach(function (spec) {
+      // EVERY occurrence, not the first. A filled PDF yields the printed page
+      // (where the label is followed by an empty underscore rule) AND the
+      // typed field values appended after it. Stopping at the first match
+      // meant reading the blank rendering of a form somebody had filled in.
       var rx = new RegExp(looseLabel(spec.label) + PAREN + "[:\\-]\\s*([\\s\\S]{0,140}?)(?=" +
-        STOP + "|\\n|$)", "i");
-      var m = rx.exec(t);
-      if (!m) { return; }
-      var v = m[1].replace(/^[\s$]+/, "").replace(/[\s.:;,\-=]+$/, "").trim();
-      if (!v || v.length < 2) { return; }
-      out[spec.field] = v;
+        STOP + "|\\n|$)", "gi");
+      var m;
+      while ((m = rx.exec(t))) {
+        var v = m[1].replace(/^[\s$]+/, "").replace(/[\s.:;,\-=]+$/, "").trim();
+        if (v && v.length >= 2) { out[spec.field] = v; break; }
+        if (rx.lastIndex === m.index) { rx.lastIndex++; }
+      }
+    });
+
+    FORM_CHECKS.forEach(function (spec) {
+      var rx = new RegExp(looseLabel(spec.label) + "\\s*[:\\-]?\\s*(checked|yes|x|on|true)\\b", "i");
+      if (rx.test(t)) { out[spec.field] = true; }
     });
 
     // Only trust this if the text really is a form. "Location" and "Parking"
@@ -931,6 +955,14 @@
     if (lodge) { out.cLodgingNights = parseInt(lodge[1], 10); }
     var rate = /night[^$\n]{0,20}\$\s*([0-9][0-9,]*(?:\.\d{2})?)/i.exec(t);
     if (rate) { out.cLodgingRate = toNum(rate[1]); }
+
+    // The Location box asks for "City, State" and the planner column is a
+    // destination, but people type the venue's full postal address into the
+    // paper form. Keep the city, and only if one can actually be found.
+    if (out.location) {
+      var loc = findLocation(out.location);
+      if (loc.value) { out.location = loc.value; }
+    }
 
     Object.keys(out).forEach(function (k) {
       if (MONEY_FIELD.test(k)) {

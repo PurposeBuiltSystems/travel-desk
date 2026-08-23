@@ -315,15 +315,20 @@
     var cands = [];
     var m;
 
-    var rx = /\b([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,3})\s*,\s*([A-Z]{2})\b(?!\s*\d{5})/g;
+    // [ \t]+ rather than \s+ between the words of a city: a place name does
+    // not straddle a line break, and allowing one lets a street line above an
+    // address join its city, so "800 Lincoln Way\nAmes, IA" is offered as a
+    // destination called "Lincoln Way Ames".
+    var CITY = "\\b([A-Z][A-Za-z.'-]+(?:[ \\t]+[A-Z][A-Za-z.'-]+){0,3})[ \\t]*,[ \\t]*";
+    var rx = new RegExp(CITY + "([A-Z]{2})\\b(?![ \\t]*\\d{5})", "g");
     while ((m = rx.exec(t))) {
       if (STATES[m[2]]) { cands.push({ city: m[1], st: m[2], at: m.index, zip: false }); }
     }
-    rx = /\b([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,3})\s*,\s*([A-Z]{2})\s+\d{5}(?:-\d{4})?\b/g;
+    rx = new RegExp(CITY + "([A-Z]{2})[ \\t]+\\d{5}(?:-\\d{4})?\\b", "g");
     while ((m = rx.exec(t))) {
       if (STATES[m[2]]) { cands.push({ city: m[1], st: m[2], at: m.index, zip: true }); }
     }
-    rx = /\b([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,3})\s*,\s*([A-Za-z]{4,20}(?:\s+[A-Za-z]{4,20})?)\b/g;
+    rx = new RegExp(CITY + "([A-Za-z]{4,20}(?:[ \\t]+[A-Za-z]{4,20})?)\\b", "g");
     while ((m = rx.exec(t))) {
       var abbr = STATE_NAMES[m[2].toLowerCase()];
       if (abbr) { cands.push({ city: m[1], st: abbr, at: m.index, zip: false }); }

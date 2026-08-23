@@ -101,6 +101,9 @@ check("excludes the traveler's own city outright",
 check("two-letter non-state is not a location",
   M.findLocation("Contact Miller, XX for details.").value, "");
 
+check("a city name never straddles a line break",
+  M.findLocation("Venue: Hilton Garden Inn, Columbus, OH\n800 Lincoln Way\nAmes, IA 50010"),
+  { value: "Columbus, OH", alternates: ["Ames, IA"] });
 check("a table label is not part of the city",
   M.findLocation("Location\tKansas City, MO").value, "Kansas City, MO");
 check("a city whose own name contains 'City' survives",

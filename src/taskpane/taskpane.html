@@ -13,7 +13,7 @@
   <!-- JSZip: packages the generated planner workbook client-side -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-  <link rel="stylesheet" href="taskpane.css?v=32" />
+  <link rel="stylesheet" href="taskpane.css?v=33" />
 </head>
 <body>
   <header class="app-head">
@@ -131,6 +131,9 @@
     <button id="addCols" hidden>Add the missing lifecycle columns</button>
     <label>Booking confirmation senders (for trip follow-up)
       <input id="bookingSenders" type="text" value="concursolutions.com, concur.com" />
+      <span class="hint">Optional. Mail from these senders is trusted on sight. Everything else in
+      your inbox is still checked — a conference registration or hotel confirmation is matched on
+      the event name or destination city, so you don't have to predict who it comes from.</span>
     </label>
     <label>Coordinator email
       <input id="coordEmail" type="text" placeholder="travel.coordinator@yourorg.com" />
@@ -311,10 +314,10 @@
 
   <section id="status" class="status" hidden></section>
 
-  <script src="../form.js?v=32"></script>
-  <script src="../xlsxgen.js?v=32"></script>
-  <script src="../coord.js?v=32"></script>
-  <script src="../graph.js?v=32"></script>
-  <script src="taskpane.js?v=32"></script>
+  <script src="../form.js?v=33"></script>
+  <script src="../xlsxgen.js?v=33"></script>
+  <script src="../coord.js?v=33"></script>
+  <script src="../graph.js?v=33"></script>
+  <script src="taskpane.js?v=33"></script>
 </body>
 </html>

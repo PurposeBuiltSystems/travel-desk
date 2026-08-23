@@ -141,6 +141,34 @@ var mb = F.matchBooking(trip, mails);
 check("confident match by city", mb.confident && mb.confident.webLink, "w1");
 check("pre-request email excluded", mb.candidates.some(function (e) { return e.webLink === "w3"; }), false);
 
+// A conference registration from an arbitrary sender must match. Requiring a
+// pre-listed sender domain made a real EDC-8 registration confirmation
+// invisible - it was dropped before matching ever ran.
+var regTrip = { event: "EDC-8 Midwest Peer Exchange", location: "Ames, IA",
+  createdAt: "2026-08-01T10:00:00Z", eventStart: "2026-09-15", returnDate: "2026-09-17" };
+var regMails = [
+  { subject: "EDC-8 Midwest Peer Exchange Registration Confirmation", bodyPreview: "You are registered.",
+    from: "someone@fhwa.dot.gov", receivedDateTime: "2026-08-23T12:00:00Z", webLink: "r1" },
+];
+check("registration from an unlisted sender matches",
+  F.matchBooking(regTrip, regMails, ["concursolutions.com"]).confident.webLink, "r1");
+
+// Mentioning the city is not enough on its own - it must look like a booking.
+var chatter = [
+  { subject: "Lunch in Ames next week?", bodyPreview: "Are you around",
+    from: "colleague@x.gov", receivedDateTime: "2026-08-23T12:00:00Z", webLink: "c1" },
+];
+check("ordinary mail mentioning the city is not a booking",
+  F.matchBooking(regTrip, chatter, []).confident, null);
+
+// A trusted sender is taken at its word even without booking language.
+var terse = [
+  { subject: "Ames", bodyPreview: "", from: "noreply@concursolutions.com",
+    receivedDateTime: "2026-08-23T12:00:00Z", webLink: "t1" },
+];
+check("trusted sender needs no booking words",
+  F.matchBooking(regTrip, terse, ["concursolutions.com"]).confident.webLink, "t1");
+
 // ambiguous: two Washington emails in window -> no auto match, both candidates
 var mails2 = mails.concat([{ subject: "Updated trip to Washington", bodyPreview: "", receivedDateTime: "2026-07-22T09:00:00Z", webLink: "w4" }]);
 var mb2 = F.matchBooking(trip, mails2);

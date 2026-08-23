@@ -219,7 +219,16 @@
    * mentions the destination city or the event name.
    * Returns {confident: email|null, candidates: [...]}.
    */
-  function matchBooking(trip, emails) {
+  // Words that mark a message as being ABOUT a booking. Deliberately broad:
+  // a conference registration is as much a booking as a flight, and the
+  // add-in should not decide which kinds of travel count.
+  var BOOKING_WORDS = new RegExp("\\b(" + [
+    "confirm(ed|ation|s)?", "itinerar(y|ies)", "reservation", "registration",
+    "registered", "book(ed|ing)", "e-?ticket", "ticket", "check-?in",
+    "trip", "flight", "hotel", "lodging", "airfare", "conference", "agenda",
+  ].join("|") + ")\\b", "i");
+
+  function matchBooking(trip, emails, trustedDomains) {
     var reqT = Date.parse(trip.createdAt || "") || 0;
     var endT = Date.parse(trip.returnDate || trip.eventStart || "") || (reqT + 90 * 864e5);
     endT += 864e5; // through the end of the return day
@@ -229,10 +238,24 @@
       var t = Date.parse(e.receivedDateTime || "") || 0;
       return t >= reqT && t <= endT;
     });
+    var trusted = (trustedDomains || []).map(function (d) {
+      return String(d).toLowerCase().trim();
+    }).filter(Boolean);
+
+    // A match needs to be about THIS trip - the city or the event by name -
+    // and to look like a booking at all. Requiring both keeps a wide net from
+    // dragging in every message that happens to mention the city.
     var confident = candidates.filter(function (e) {
       var hay = ((e.subject || "") + " " + (e.bodyPreview || "")).toLowerCase();
-      return (city && city.length >= 3 && hay.indexOf(city) !== -1) ||
-             (eventTok && eventTok.length >= 6 && hay.indexOf(eventTok) !== -1);
+      var aboutTrip = (city && city.length >= 3 && hay.indexOf(city) !== -1) ||
+                      (eventTok && eventTok.length >= 6 && hay.indexOf(eventTok) !== -1);
+      if (!aboutTrip) { return false; }
+      var from = String(e.from || "").toLowerCase();
+      var fromTrusted = trusted.some(function (d) { return d && from.indexOf(d) !== -1; });
+      // A trusted sender is taken at its word; anyone else has to look like a
+      // booking. That keeps Concur working exactly as before while letting a
+      // conference registration through on its own merits.
+      return fromTrusted || BOOKING_WORDS.test((e.subject || "") + " " + (e.bodyPreview || ""));
     });
     return {
       confident: confident.length === 1 ? confident[0] : null,

@@ -378,16 +378,30 @@
   }
 
   /** Inbox messages from booking senders (e.g. Concur) since a date. */
-  async function bookingEmails(token, sinceIso, senderDomains) {
+  /**
+   * Inbox mail since the request was raised.
+   *
+   * This used to discard anything not from a listed sender domain, defaulting
+   * to Concur. That only ever finds the confirmations you predicted: a
+   * conference registration, a hotel, an airline, or a colleague forwarding
+   * you the booking all arrive from somewhere else and were dropped before
+   * matching ever ran. A real case - an EDC-8 registration confirmation
+   * forwarded from a work address - was invisible for exactly that reason.
+   *
+   * Sender is now a signal, not a gate. Everything in the window is returned
+   * and matchBooking() decides, using the trip's own city and event name.
+   */
+  async function bookingEmails(token, sinceIso) {
     var filt = "receivedDateTime ge " + sinceIso;
     var res = await graphJson(token, "GET", "/me/mailFolders/inbox/messages?$filter=" +
       encodeURIComponent(filt) +
-      "&$select=id,subject,bodyPreview,from,receivedDateTime,webLink&$orderby=receivedDateTime desc&$top=100");
-    var domains = (senderDomains || []).map(function (d) { return String(d).toLowerCase().trim(); }).filter(Boolean);
-    return (res.value || []).filter(function (m) {
-      var a = ((m.from || {}).emailAddress || {}).address || "";
-      var al = a.toLowerCase();
-      return domains.some(function (d) { return al.indexOf(d) !== -1; });
+      "&$select=id,subject,bodyPreview,from,receivedDateTime,webLink&$orderby=receivedDateTime desc&$top=200");
+    return (res.value || []).map(function (m) {
+      return {
+        id: m.id, subject: m.subject, bodyPreview: m.bodyPreview,
+        receivedDateTime: m.receivedDateTime, webLink: m.webLink,
+        from: (((m.from || {}).emailAddress || {}).address || ""),
+      };
     });
   }
 

@@ -1152,11 +1152,11 @@
       setStatus("work", "Checking your inbox for booking confirmations\u2026");
       var token = await GraphData.getToken();
       var since = open.reduce(function (min, t) { return t.createdAt < min ? t.createdAt : min; }, open[0].createdAt);
-      var senders = (byId("bookingSenders").value || "concursolutions.com").split(",");
-      var emails = await GraphData.bookingEmails(token, since, senders);
+      var senders = (val("bookingSenders") || "").split(",");
+      var emails = await GraphData.bookingEmails(token, since);
       var booked = 0, unsure = 0;
       open.forEach(function (t) {
-        var m = TravelForm.matchBooking(t, emails);
+        var m = TravelForm.matchBooking(t, emails, senders);
         if (m.confident) {
           t.status = "booked";
           markBookedEverywhere(t);

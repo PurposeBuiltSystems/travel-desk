@@ -215,3 +215,20 @@ button:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, v
 button.linkish { background: none; border: none; padding: 8px 4px; min-height: 32px; font: inherit; color: inherit; cursor: pointer; text-decoration: underline; opacity: .85; }
 button.linkish:hover { opacity: 1; }
 button.linkish:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: 3px; }
+
+/* "Fill from this email" — the report of what was taken and from where.
+   Sources are shown, not hidden: this is a financial form, and a value the
+   person cannot trace is a value they have to re-check by hand. */
+.fillreport { margin-top: 10px; font-size: 12px; line-height: 1.5; }
+.fillreport ul { margin: 4px 0 0; padding-left: 0; list-style: none; }
+.fillreport li { padding: 3px 0; border-top: 1px solid var(--line); }
+.fillreport li:first-child { border-top: 0; }
+.fillreport .f-name { font-weight: 600; }
+.fillreport .f-src { display: block; color: var(--muted); font-size: 11px; }
+.fillreport .f-guess { color: var(--muted); font-style: italic; }
+.fillreport .f-head { font-weight: 700; margin: 8px 0 2px; }
+.fillreport .f-note { color: var(--muted); margin: 2px 0; }
+.fillreport .f-alt { margin-top: 4px; }
+.fillreport .f-alt button {
+  font-size: 11px; padding: 2px 8px; margin: 2px 4px 0 0; width: auto;
+}

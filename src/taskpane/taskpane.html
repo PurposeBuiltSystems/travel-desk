@@ -13,7 +13,7 @@
   <!-- JSZip: packages the generated planner workbook client-side -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-  <link rel="stylesheet" href="taskpane.css?v=36" />
+  <link rel="stylesheet" href="taskpane.css?v=37" />
 </head>
 <body>
   <header class="app-head">
@@ -189,6 +189,15 @@
   </details>
 
   <section class="form">
+    <div class="fastpath" id="fillBox">
+      <b>Start from the email you're reading.</b> Travel Desk reads the open message
+      and its attachments — agenda, invitation letter, calendar invite, cost sheet —
+      and fills in what it can find.
+      <button id="fillFromEmail" class="primary" style="width:100%">📥 Fill from this email</button>
+      <label class="modes" style="margin-top:6px"><input id="fillOverwrite" type="checkbox" /> Replace what I've already typed</label>
+      <div id="fillReport" class="fillreport" hidden></div>
+    </div>
+
     <h2>Traveler</h2>
     <label>Name <span class="req">required</span><input id="name" type="text" placeholder="Matt Miller" /></label>
     <label>Cost center <input id="costCenter" type="text" /></label>
@@ -317,10 +326,12 @@
 
   <section id="status" class="status" hidden></section>
 
-  <script src="../form.js?v=36"></script>
-  <script src="../xlsxgen.js?v=36"></script>
-  <script src="../coord.js?v=36"></script>
-  <script src="../graph.js?v=36"></script>
-  <script src="taskpane.js?v=36"></script>
+  <script src="../mailparse.js?v=37"></script>
+  <script src="../attachtext.js?v=37"></script>
+  <script src="../form.js?v=37"></script>
+  <script src="../xlsxgen.js?v=37"></script>
+  <script src="../coord.js?v=37"></script>
+  <script src="../graph.js?v=37"></script>
+  <script src="taskpane.js?v=37"></script>
 </body>
 </html>

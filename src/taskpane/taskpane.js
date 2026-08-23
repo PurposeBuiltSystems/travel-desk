@@ -5,7 +5,7 @@
  * form, click "Create travel request" — the add-in creates the Travel
  * Authorization email draft AND appends the matching planner row.
  */
-/* global Office, GraphData, TravelForm, TravelCoord, XlsxGen, JSZip, document, window */
+/* global Office, GraphData, TravelForm, TravelCoord, XlsxGen, TdMail, TdAttach, JSZip, document, window */
 (function () {
   "use strict";
 
@@ -239,6 +239,7 @@
       box.value = (box.value.trim() ? box.value.trim() + " " : "") + t;
     });
     on("submit", "click", submit);
+    on("fillFromEmail", "click", fillFromEmail);
     on("profileCopy", "click", profileCopy);
     on("inviteSend", "click", sendInvites);
     ORG_FIELDS.forEach(function (k) {
@@ -620,6 +621,233 @@
     var el = byId("paneVersion");
     if (!el) { return; }
     el.textContent = "Travel Desk build " + paneVersion();
+  }
+
+  // ------------------------------------------------ fill from this email
+
+  var FILL_LABELS = {
+    event: "Conference / event name", location: "Location",
+    eventStart: "Event start", confDates: "Conference dates",
+    departDate: "Departure", returnDate: "Return",
+    attendeeRole: "Role", meetingLink: "Meeting / event link",
+    cRegistration: "Registration $", cLodgingRate: "Rate / night $",
+    cLodgingNights: "Lodging nights", cTravelMode: "Travel mode cost $",
+    cParking: "Parking $", cLuggage: "Luggage $",
+  };
+
+  /** Promise wrapper — Office.js is callback-only and this reads better. */
+  function officeCall(fn) {
+    return new Promise(function (resolve, reject) {
+      try {
+        fn(function (r) {
+          if (r && r.status === Office.AsyncResultStatus.Succeeded) { resolve(r.value); }
+          else { reject(new Error((r && r.error && r.error.message) || "Outlook returned no value")); }
+        });
+      } catch (e) { reject(e); }
+    });
+  }
+
+  /**
+   * Attachment bytes, whatever shape Outlook hands them over in.
+   *
+   * getAttachmentContentAsync returns one of four formats and they are not
+   * interchangeable: base64 for ordinary files, but raw text for a calendar
+   * invite or an attached message, and for a cloud attachment just a URL that
+   * we cannot follow from here (it is a different origin, and there is no
+   * token for it). Treating "url" as a failure rather than an empty file is
+   * the difference between "OneDrive attachments can't be scanned" and a
+   * silent blank.
+   */
+  async function attachmentBytes(item, att) {
+    var res = await officeCall(function (cb) { item.getAttachmentContentAsync(att.id, cb); });
+    var F = Office.MailboxEnums.AttachmentContentFormat;
+    if (res.format === F.Base64) { return { bytes: TdAttach.b64ToBytes(res.content) }; }
+    if (res.format === F.ICalendar || res.format === F.Eml) { return { text: res.content }; }
+    if (res.format === F.Url) {
+      return { note: "stored in the cloud, not attached — download it and attach it to scan it" };
+    }
+    return { note: "unrecognised attachment format" };
+  }
+
+  /**
+   * Read the open message and fill the form from it.
+   *
+   * Two rules make this safe to press. Nothing already typed is overwritten
+   * unless the box is ticked, and every value that lands is reported with
+   * where it came from. A prefill that silently replaced a figure you had
+   * checked, or that you could not trace back to a line in the email, would
+   * be worse than typing it — you would have to verify the whole form anyway.
+   */
+  async function fillFromEmail() {
+    var item = Office.context.mailbox && Office.context.mailbox.item;
+    if (!item) {
+      setStatus("error", "Open an email first — Travel Desk reads the message you're looking at.");
+      return;
+    }
+    if (typeof TdMail === "undefined" || typeof TdAttach === "undefined") {
+      setStatus("error", "This pane is a cached older version. Close it, reopen it, and check the " +
+        "build number at the top.");
+      return;
+    }
+    var btn = byId("fillFromEmail");
+    if (btn) { btn.disabled = true; }
+    setStatus("work", "Reading the message…");
+    try {
+      var body = "";
+      try {
+        body = await officeCall(function (cb) { item.body.getAsync(Office.CoercionType.Html, cb); });
+      } catch (e) {
+        try { body = await officeCall(function (cb) { item.body.getAsync(Office.CoercionType.Text, cb); }); }
+        catch (e2) { body = ""; }
+      }
+
+      // Inline images are signature logos, and every one of them would be
+      // fetched and discarded.
+      var atts = (item.attachments || []).filter(function (a) { return a && !a.isInline; });
+      var scanned = [], skipped = [];
+      for (var i = 0; i < atts.length; i++) {
+        var a = atts[i];
+        setStatus("work", "Reading " + a.name + " (" + (i + 1) + " of " + atts.length + ")…");
+        try {
+          var got = await attachmentBytes(item, a);
+          if (got.text) { scanned.push({ name: a.name, text: got.text }); continue; }
+          if (got.note) { skipped.push(a.name + " — " + got.note); continue; }
+          var out = await TdAttach.attachmentText(a.name, got.bytes);
+          if (out.text) { scanned.push({ name: a.name, text: out.text }); }
+          else { skipped.push(a.name + (out.note ? " — " + out.note : "")); }
+        } catch (err) {
+          skipped.push(a.name + " — couldn't be opened");
+        }
+      }
+
+      var received = "";
+      try {
+        var dt = item.dateTimeCreated || item.dateTimeModified;
+        if (dt) { received = new Date(dt).toISOString(); }
+      } catch (e) { /* a missing timestamp only costs the past-date filter */ }
+
+      var pre = TdMail.buildPrefill({
+        subject: item.subject || "",
+        body: body,
+        receivedIso: received,
+        homeCity: (settings().homeCity || ""),
+        attachments: scanned,
+      });
+
+      applyPrefill(pre, scanned, skipped);
+    } catch (err) {
+      setStatus("error", "Couldn't read this message: " + (err && err.message ? err.message : err));
+    } finally {
+      if (btn) { btn.disabled = false; }
+    }
+  }
+
+  function applyPrefill(pre, scanned, skipped) {
+    var overwrite = isChecked("fillOverwrite");
+    var filled = [], kept = [];
+
+    Object.keys(pre.fields).forEach(function (id) {
+      var el = byId(id);
+      if (!el) { return; }
+      var current = String(el.value || "").trim();
+      var next = pre.fields[id];
+      if (current && !overwrite) {
+        if (current !== String(next)) { kept.push({ id: id, mine: current, theirs: next }); }
+        return;
+      }
+      el.value = next;
+      filled.push({ id: id, value: next, source: pre.sources[id] || "" });
+    });
+
+    // The costs only re-total on 'input', which assigning .value does not fire.
+    try { refreshTotal(); refreshFyLine(); } catch (e) { /* cosmetic */ }
+
+    renderFillReport(pre, filled, kept, scanned, skipped);
+    if (filled.length) {
+      setStatus("info", "Filled " + filled.length + " field" + (filled.length === 1 ? "" : "s") +
+        " from this email. Check them against the message before you submit — " +
+        "each one shows where it came from.");
+    } else if (kept.length) {
+      setStatus("info", "Everything it found was already filled in. Tick “Replace what I've " +
+        "already typed” if you want it to overwrite.");
+    } else {
+      setStatus("error", "Nothing usable in this message. See the notes below — the fields it " +
+        "couldn't find are listed with why.");
+    }
+  }
+
+  function renderFillReport(pre, filled, kept, scanned, skipped) {
+    var box = byId("fillReport");
+    if (!box) { return; }
+    box.hidden = false;
+    box.innerHTML = "";
+
+    function head(t) {
+      var p = document.createElement("p");
+      p.className = "f-head"; p.textContent = t; box.appendChild(p); return p;
+    }
+    function note(t) {
+      var p = document.createElement("p");
+      p.className = "f-note"; p.textContent = t; box.appendChild(p); return p;
+    }
+
+    if (filled.length) {
+      head("Filled in — check each against the email:");
+      var ul = document.createElement("ul");
+      filled.forEach(function (f) {
+        var li = document.createElement("li");
+        var n = document.createElement("span");
+        n.className = "f-name";
+        n.textContent = (FILL_LABELS[f.id] || f.id) + ": " + f.value;
+        li.appendChild(n);
+        if (f.source) {
+          var s = document.createElement("span");
+          s.className = "f-src";
+          s.textContent = "from " + f.source;
+          li.appendChild(s);
+        }
+        ul.appendChild(li);
+      });
+      box.appendChild(ul);
+    }
+
+    // A second candidate for the destination is common and cheap to offer:
+    // "Denver, CO" and the overflow hotel in "Aurora, CO" both look like the
+    // venue to a regex, and only the person reading it knows which.
+    if (pre.alternates && pre.alternates.location && pre.alternates.location.length) {
+      var wrap = document.createElement("div");
+      wrap.className = "f-alt";
+      var lbl = document.createElement("span");
+      lbl.textContent = "Other places mentioned: ";
+      wrap.appendChild(lbl);
+      pre.alternates.location.forEach(function (alt) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.textContent = alt;
+        b.addEventListener("click", function () {
+          setVal("location", alt);
+          setStatus("info", "Destination set to " + alt + ".");
+        });
+        wrap.appendChild(b);
+      });
+      box.appendChild(wrap);
+    }
+
+    if (kept.length) {
+      head("Left alone — you'd already typed something:");
+      var ul2 = document.createElement("ul");
+      kept.forEach(function (k) {
+        var li = document.createElement("li");
+        li.textContent = (FILL_LABELS[k.id] || k.id) + ": kept “" + k.mine +
+          "” (the email says “" + k.theirs + "”)";
+        ul2.appendChild(li);
+      });
+      box.appendChild(ul2);
+    }
+
+    if (scanned.length) { note("Read: " + scanned.map(function (a) { return a.name; }).join(", ")); }
+    if (skipped.length) { note("Not read: " + skipped.join("; ")); }
+    (pre.notes || []).forEach(function (n) { note(n); });
   }
 
   function openPlannerSetup() {

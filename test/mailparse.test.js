@@ -569,6 +569,77 @@ check("reason for travel is read",
 check("the same template with nothing filled in still yields nothing",
   JSON.stringify(M.formFields(BLANK)), "{}");
 
+// ------------------------------- teaching it another org's wording
+
+var OTHER_FORM = [
+  "County Travel Request",
+  "Traveler: Dana Reyes",
+  "Acct String: 44-2210",
+  "Trip Purpose: Presenting the culvert inventory results",
+  "Meeting Name: Midwest Bridge Summit",
+  "City/State: Omaha, NE",
+  "Leave: 03/09/2027",
+  "Back: 03/12/2027",
+  "Conference Fee: $ 325.00",
+  "Fund Source: Local Roads",
+].join("\n");
+
+var disc = M.discoverLabels(OTHER_FORM);
+function labelled(list, name) {
+  var hit = list.filter(function (x) { return x.label === name; })[0];
+  return hit ? hit.field : "(not found)";
+}
+check("an unfamiliar form still yields its labels", disc.length >= 9, true);
+check("wording it happens to share is matched", labelled(disc, "Meeting Name"), "");
+check("and nothing is invented for the rest", labelled(disc, "Acct String"), "");
+check("a label it does know is pre-assigned",
+  labelled(M.discoverLabels("Departure Date: 1/2/2027\nLocation: Ames, IA\nReturn Date: 1/3/2027"),
+    "Departure Date"), "departDate");
+
+check("without a mapping, an unfamiliar form gives almost nothing",
+  Object.keys(M.formFields(OTHER_FORM)).length < 3, true);
+
+var ALIASES = {
+  "Traveler": "name", "Acct String": "costCenter", "Trip Purpose": "reason",
+  "Meeting Name": "event", "City/State": "location",
+  "Leave": "departDate", "Back": "returnDate", "Conference Fee": "cRegistration",
+  "Fund Source": "funding",
+};
+var mapped = M.formFields(OTHER_FORM, ALIASES);
+check("mapped traveler", mapped.name, "Dana Reyes");
+check("mapped cost center", mapped.costCenter, "44-2210");
+check("mapped reason", mapped.reason, "Presenting the culvert inventory results");
+check("mapped event", mapped.event, "Midwest Bridge Summit");
+check("mapped location", mapped.location, "Omaha, NE");
+check("mapped departure", mapped.departDate, "2027-03-09");
+check("mapped return", mapped.returnDate, "2027-03-12");
+check("mapped registration fee", mapped.cRegistration, 325);
+check("mapped funding", mapped.funding, "Local Roads");
+
+// A saved mapping is shown back as the current choice, not as unassigned.
+check("saved choices come back selected",
+  labelled(M.discoverLabels(OTHER_FORM, ALIASES), "Acct String"), "costCenter");
+
+// The coordinator's wording wins where it disagrees with the built-in table.
+check("an alias overrides the built-in meaning of a shared word",
+  M.formFields("Location: Room 240B\nCity/State: Omaha, NE\nDeparture Date: 1/2/2027",
+    { "Location": "comments", "City/State": "location" }).comments,
+  "Room 240B");
+
+// A tick box reached through an alias arrives as text, not as "checked".
+check("an alias onto a tick box reads yes as ticked",
+  M.formFields("Use Agency Car: Yes\nMeeting Name: X\nLeave: 1/2/2027",
+    { "Use Agency Car": "modeState", "Meeting Name": "event", "Leave": "departDate" }).modeState,
+  true);
+check("and reads no as not ticked",
+  M.formFields("Use Agency Car: No\nMeeting Name: X\nLeave: 1/2/2027",
+    { "Use Agency Car": "modeState", "Meeting Name": "event", "Leave": "departDate" }).modeState,
+  undefined);
+
+check("every mappable target is a real field id",
+  M.MAPPABLE.every(function (m) { return /^[A-Za-z_][A-Za-z0-9]*$/.test(m.field) && m.text; }),
+  true);
+
 if (failures) {
   console.error("\n" + failures + " mail-parsing test(s) failed.");
   process.exit(1);

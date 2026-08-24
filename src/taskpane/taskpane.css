@@ -232,3 +232,17 @@ button.linkish:focus-visible { outline: 2px solid currentColor; outline-offset: 
 .fillreport .f-alt button {
   font-size: 11px; padding: 2px 8px; margin: 2px 4px 0 0; width: auto;
 }
+
+/* "Teach it our travel form" — one row per label the document uses, with the
+   Travel Desk field it feeds. Labels the built-in table already knew are
+   shown too, so the mapping can be corrected, not just extended. */
+.learn-list { list-style: none; margin: 6px 0 0; padding: 0; }
+.learn-list li { padding: 6px 0; border-top: 1px solid var(--line); }
+.learn-list li:first-child { border-top: 0; }
+.learn-list .f-name { display: block; font-weight: 600; font-size: 12px; }
+.learn-list select { width: 100%; margin-top: 3px; }
+.learn-new {
+  display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 8px;
+  background: var(--accent-soft); color: var(--accent-soft-fg);
+  font-size: 10px; font-weight: 700; text-transform: uppercase; vertical-align: middle;
+}

@@ -876,6 +876,166 @@
     { label: "Ground Transportation Costs", suffix: "Ground" },
   ];
 
+  /**
+   * Fields a coordinator can map their own form's wording onto.
+   *
+   * Travel Desk knows the Iowa DOT form's labels. Another agency calls the
+   * same box "Acct String" or "Trip Purpose", and no amount of pattern work
+   * guesses that - it has to be told once, by someone who has the form in
+   * front of them, and then shared with the team.
+   */
+  var MAPPABLE = [
+    { field: "name", text: "Traveler name" },
+    { field: "_nameCost", text: "Name + cost center (one box)" },
+    { field: "costCenter", text: "Cost center" },
+    { field: "division", text: "Division" },
+    { field: "bureau", text: "Bureau" },
+    { field: "otherStaff", text: "Other travelers" },
+    { field: "event", text: "Conference / event name" },
+    { field: "location", text: "Location" },
+    { field: "confDates", text: "Conference dates & times" },
+    { field: "departDate", text: "Departure date" },
+    { field: "returnDate", text: "Return date" },
+    { field: "attendeeRole", text: "Role" },
+    { field: "reason", text: "Reason for travel" },
+    { field: "meetingLink", text: "Meeting / event link" },
+    { field: "modePersonal", text: "Personal vehicle (tick box)" },
+    { field: "modeState", text: "State vehicle (tick box)" },
+    { field: "modeAir", text: "Commercial air (tick box)" },
+    { field: "cTravelMode", text: "Travel mode cost $" },
+    { field: "cLuggage", text: "Luggage $" },
+    { field: "cParking", text: "Parking $" },
+    { field: "cTaxi", text: "Taxi / rideshare $" },
+    { field: "cLodgingNights", text: "Lodging nights" },
+    { field: "cLodgingRate", text: "Rate per night $" },
+    { field: "cRegistration", text: "Registration $" },
+    { field: "cAdditional", text: "Additional $" },
+    { field: "cAdditionalDesc", text: "Additional fees are for" },
+    { field: "cMealsB", text: "Breakfasts included" },
+    { field: "cMealsL", text: "Lunches included" },
+    { field: "cMealsD", text: "Dinners included" },
+    { field: "funding", text: "Funding program" },
+    { field: "comments", text: "Planner comments" },
+    { field: "tp1Name", text: "3rd party - entity" },
+    { field: "tp1Contact", text: "3rd party - billing contact" },
+    { field: "tp1Project", text: "3rd party - project number" },
+    { field: "tp1Max", text: "3rd party - max reimbursement $" },
+    { field: "tp1Packet", text: "3rd party - packet to attach (tick)" },
+    { field: "tp1Notes", text: "3rd party - notes" },
+    { field: "tp1Reg", text: "3rd party covers registration (tick)" },
+    { field: "tp1Lodging", text: "3rd party covers lodging (tick)" },
+    { field: "tp1Air", text: "3rd party covers airfare (tick)" },
+    { field: "tp1Meals", text: "3rd party covers meals (tick)" },
+    { field: "tp1Ground", text: "3rd party covers ground transport (tick)" },
+    { field: "tp2Name", text: "3rd party #2 - entity" },
+    { field: "tp2Project", text: "3rd party #2 - project number" },
+    { field: "tp2Max", text: "3rd party #2 - max reimbursement $" },
+    { field: "tp2Notes", text: "3rd party #2 - notes" },
+  ];
+
+  // Section headings: they end a value even though they carry no colon, and
+  // when one precedes a label it is debris in front of it, not part of it.
+  var HEADING_WORDS = [
+    "3rd Party Spend Authorization", "First 3rd Party Entity",
+    "Second 3rd Party Entity", "Reimbursement Items", "Reimbursement Notes",
+    "Do you have", "Mode of Travel", "Travel Authorization Form",
+  ];
+
+  var BOOL_FIELD = /^(mode(Personal|State|Air)|tp[12](Reg|Lodging|Air|Meals|Ground|Packet))$/;
+
+  /**
+   * Every label a document appears to use, so a coordinator can assign the
+   * ones Travel Desk did not recognise.
+   *
+   * Deriving the label text and matching against it later use the SAME rule,
+   * which matters more than the label being pretty. A PDF's kerning can turn
+   * "Cost Center" into "C ost Center"; as long as discovery and matching agree
+   * on that string, the mapping works. Presenting it is what lets the person
+   * confirm or ignore it.
+   */
+  function discoverLabels(text, aliases) {
+    var t = clean(text).replace(/_{2,}/g, " ");
+    var known = {}, out = [], seen = {};
+    FORM_LABELS.concat(TP_TEXT.map(function (o) {
+      return { label: o.label, field: "tp1" + o.suffix };
+    })).concat(FORM_CHECKS).concat(TP_CHECK.map(function (o) {
+      return { label: o.label, field: "tp1" + o.suffix };
+    })).forEach(function (o) { known[norm(o.label)] = o.field; });
+
+    function add(label) {
+      var L = label.replace(/\s{2,}/g, " ").trim();
+      // What precedes a label is the previous field's VALUE, and there is no
+      // separator between them once whitespace has been collapsed. So the
+      // longest suffix that is a label we recognise wins: "us Name & C ost
+      // Center" is the tail of an email address followed by a real label.
+      // Leading punctuation is always debris from the previous value - the
+      // "$" of an amount, the "=" of a total. Strip it before matching, or
+      // the label displays as "@ $ = $ Registration Fee": recognised, since
+      // normalising ignores punctuation, but unreadable to the person
+      // deciding what it maps to.
+      L = L.replace(/^(?:[^A-Za-z0-9]+\s*)+/, "").trim();
+      var words = L.split(" ");
+      for (var i = 0; i < words.length; i++) {
+        var tail = words.slice(i).join(" ");
+        if (!known[norm(tail)]) { continue; }
+        // Shorten ONLY when everything dropped is debris: a stray single
+        // letter from "___B___L___D", or the lowercase tail of the previous
+        // value. Otherwise "Meeting Name" would be filed as "Name" and read
+        // as the third-party entity, which is a different box entirely.
+        var dropped = words.slice(0, i);
+        var junk = dropped.every(function (w) {
+          return !/[A-Za-z0-9]/.test(w) || /^[A-Za-z]$/.test(w) || /^[a-z]/.test(w);
+        }) || HEADING_WORDS.some(function (h) {
+          return norm(dropped.join(" ")).slice(-norm(h).length) === norm(h);
+        });
+        if (junk) { L = tail; }
+        break;
+      }
+      // Nothing recognised: drop leading debris - bare punctuation, single
+      // letters left over from "___B___L___D", and lowercase words, since a
+      // label starts with a capital and a value's tail usually does not.
+      if (!known[norm(L)]) {
+        L = L.replace(/^(?:[^A-Za-z0-9]+|[A-Za-z]\b|[a-z][a-z0-9]*\b)(?:\s+|$)/g, "").trim();
+      }
+      if (L.length < 2 || L.length > 45) { return; }
+      if (!/[A-Za-z]/.test(L)) { return; }
+      var k = norm(L);
+      if (seen[k]) { return; }
+      seen[k] = 1;
+      out.push({
+        label: L,
+        field: (aliases && aliases[L]) || known[k] || "",
+        builtin: known[k] || "",
+        known: !!known[k],
+      });
+    }
+
+    // Structured first: an AcroForm block and any newline-delimited form give
+    // one "Label: value" per line, which needs no guessing at all.
+    t.split("\n").forEach(function (line) {
+      var m = /^\s*([^:\n]{2,45}?)\s*:\s*(.*)$/.exec(line);
+      if (m) { add(m[1]); }
+    });
+
+    // Then the unstructured case: a page whose text is one long run. Take the
+    // words before each colon, stopping at the previous colon or sentence end.
+    var rx = /:/g, m2, prev = 0;
+    while ((m2 = rx.exec(t))) {
+      var seg = t.slice(prev, m2.index);
+      prev = m2.index + 1;
+      var cut = Math.max(seg.lastIndexOf("."), seg.lastIndexOf("?"),
+                         seg.lastIndexOf("\n"), seg.lastIndexOf(")"));
+      if (cut >= 0) { seg = seg.slice(cut + 1); }
+      var words = seg.trim().split(/\s+/);
+      add(words.slice(Math.max(0, words.length - 6)).join(" "));
+    }
+    return out;
+  }
+
+  function norm(s) {
+    return String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+
   var MONEY_FIELD = /^(cTravelMode|cLuggage|cParking|cRegistration|cTaxi|cAdditional|tp1Max|tp2Max)$/;
   var DATE_FIELD = /^(departDate|returnDate)$/;
 
@@ -889,7 +1049,24 @@
    * empty is skipped, so a half-completed form contributes the half that was
    * filled and stays silent about the rest.
    */
-  function formFields(text) {
+  /**
+   * A coordinator's own labels, ahead of the built-in ones.
+   *
+   * Theirs come first so that a form which reuses a word Travel Desk already
+   * knows for something else - "Location" meaning the room rather than the
+   * city - resolves the way the person who read the form said it should.
+   */
+  function aliasTable(aliases) {
+    var out = [];
+    Object.keys(aliases || {}).forEach(function (label) {
+      var f = aliases[label];
+      var L = String(label || "").trim();
+      if (f && L) { out.push({ label: L, field: f }); }
+    });
+    return out;
+  }
+
+  function formFields(text, aliases) {
     var t = clean(text).replace(/_{2,}/g, " ");   // erase the blank rules
     var out = {};
 
@@ -902,20 +1079,17 @@
     // Section headings end a value even though they carry no colon. Without
     // them a value simply runs on: "Project Number: EDC8-IA-2026 Do you have
     // the 3rd party packet to attach?" is what the project number became.
-    var HEADINGS = "(?:" + [
-      "3rd Party Spend Authorization", "First 3rd Party Entity",
-      "Second 3rd Party Entity", "Reimbursement Items", "Reimbursement Notes",
-      "Do you have", "Mode of Travel", "Travel Authorization Form",
-    ].map(looseLabel).join("|") + ")";
+    var HEADINGS = "(?:" + HEADING_WORDS.map(looseLabel).join("|") + ")";
+    var LABELS = aliasTable(aliases).concat(FORM_LABELS);
     var STOP = "(?:" +
-      FORM_LABELS.map(function (o) { return looseLabel(o.label); }).join("|") +
+      LABELS.map(function (o) { return looseLabel(o.label); }).join("|") +
       "|" + looseLabel("Lodging") +
       "|" + looseLabel("Mode of Travel") +
       "|" + looseLabel("Reimbursement Items") +
       "|" + looseLabel("Reimbursement Notes") +
       ")" + PAREN + "[:\\-]|" + HEADINGS;
 
-    FORM_LABELS.forEach(function (spec) {
+    LABELS.forEach(function (spec) {
       // EVERY occurrence, not the first. A filled PDF yields the printed page
       // (where the label is followed by an empty underscore rule) AND the
       // typed field values appended after it. Stopping at the first match
@@ -1063,6 +1237,15 @@
       var loc = findLocation(out.location);
       if (loc.value) { out.location = loc.value; }
     }
+
+    // A tick box mapped by alias arrives as whatever was typed in it, not as
+    // the word "checked" a real checkbox reports.
+    Object.keys(out).forEach(function (k) {
+      if (!BOOL_FIELD.test(k) || out[k] === true) { return; }
+      var v = String(out[k]).trim();
+      if (/^(no|n|false|off|none|0)$/i.test(v)) { delete out[k]; }
+      else { out[k] = true; }
+    });
 
     // "Additional Fees (and what they are for): $ 85.00 conference banquet" -
     // the amount and the explanation share one line on the form, and the
@@ -1245,7 +1428,7 @@
     // Somebody typed these values into the fields on purpose. Nothing derived
     // from prose should be allowed to overrule that.
     atts.forEach(function (a) {
-      var ff = formFields(a.text);
+      var ff = formFields(a.text, inp.formLabels);
       Object.keys(ff).forEach(function (k) { put(k, ff[k], a.name + " (the filled-in form)"); });
     });
 
@@ -1408,6 +1591,8 @@
     findSignature: findSignature,
     findCoordinator: findCoordinator,
     formFields: formFields,
+    discoverLabels: discoverLabels,
+    MAPPABLE: MAPPABLE,
     findNights: findNights,
     findLink: findLink,
     findTimes: findTimes,

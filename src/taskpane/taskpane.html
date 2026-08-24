@@ -13,7 +13,7 @@
   <!-- JSZip: packages the generated planner workbook client-side -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-  <link rel="stylesheet" href="taskpane.css?v=44" />
+  <link rel="stylesheet" href="taskpane.css?v=45" />
 </head>
 <body>
   <header class="app-head">
@@ -132,6 +132,20 @@
          18, and close-out fails against them. This checks and repairs in place. -->
     <div id="colCheck" class="hint"></div>
     <button id="addCols" hidden>Add the missing lifecycle columns</button>
+    <details id="learnBox" class="options">
+      <summary>Teach it our travel form (optional)</summary>
+      <p class="hint">Travel Desk already knows the standard Iowa DOT wording. If your form
+         calls things something else — <b>Acct String</b> instead of Cost center — show it
+         the form once and map the labels. Open an email with your <b>blank</b> form attached,
+         then click below.</p>
+      <button id="learnScan">Learn from this email's attachment</button>
+      <div id="learnList" class="hint">Nothing scanned yet.</div>
+      <button id="learnSave" class="primary" hidden>Save our form's wording</button>
+      <button id="learnClear" hidden>Forget it and use the built-in wording</button>
+      <p class="hint" style="margin:4px 0 0">Saved wording travels in your setup code, so
+         everyone you've added inherits it.</p>
+    </details>
+
     <label>Booking confirmation senders (for trip follow-up)
       <input id="bookingSenders" type="text" value="concursolutions.com, concur.com" />
       <span class="hint">Optional. Mail from these senders is trusted on sight. Everything else in
@@ -326,12 +340,12 @@
 
   <section id="status" class="status" hidden></section>
 
-  <script src="../mailparse.js?v=44"></script>
-  <script src="../attachtext.js?v=44"></script>
-  <script src="../form.js?v=44"></script>
-  <script src="../xlsxgen.js?v=44"></script>
-  <script src="../coord.js?v=44"></script>
-  <script src="../graph.js?v=44"></script>
-  <script src="taskpane.js?v=44"></script>
+  <script src="../mailparse.js?v=45"></script>
+  <script src="../attachtext.js?v=45"></script>
+  <script src="../form.js?v=45"></script>
+  <script src="../xlsxgen.js?v=45"></script>
+  <script src="../coord.js?v=45"></script>
+  <script src="../graph.js?v=45"></script>
+  <script src="taskpane.js?v=45"></script>
 </body>
 </html>

@@ -87,7 +87,7 @@
   var ORG_FIELDS = ["coordEmail", "arEmail", "orgName", "fyStartMonth", "fyPrefix", "fundingLabel", "bookingSenders"];
   // What an org profile carries (coordinator → travelers). wbUrl/table ride
   // along so one Apply fully configures a traveler.
-  var PROFILE_FIELDS = ORG_FIELDS.concat(["wbUrl", "tableName", "fundingOptions", "planners"]);
+  var PROFILE_FIELDS = ORG_FIELDS.concat(["wbUrl", "tableName", "fundingOptions", "planners", "formLabels"]);
 
   function applyOrgLabels() {
     var s = settings();
@@ -240,6 +240,9 @@
     });
     on("submit", "click", submit);
     on("fillFromEmail", "click", fillFromEmail);
+    on("learnScan", "click", learnScan);
+    on("learnSave", "click", learnSave);
+    on("learnClear", "click", learnClear);
     on("profileCopy", "click", profileCopy);
     on("inviteSend", "click", sendInvites);
     /*
@@ -740,24 +743,10 @@
         catch (e2) { body = ""; }
       }
 
-      // Inline images are signature logos, and every one of them would be
-      // fetched and discarded.
-      var atts = (item.attachments || []).filter(function (a) { return a && !a.isInline; });
-      var scanned = [], skipped = [];
-      for (var i = 0; i < atts.length; i++) {
-        var a = atts[i];
-        setStatus("work", "Reading " + a.name + " (" + (i + 1) + " of " + atts.length + ")…");
-        try {
-          var got = await attachmentBytes(item, a);
-          if (got.text) { scanned.push({ name: a.name, text: got.text }); continue; }
-          if (got.note) { skipped.push(a.name + " — " + got.note); continue; }
-          var out = await TdAttach.attachmentText(a.name, got.bytes);
-          if (out.text) { scanned.push({ name: a.name, text: out.text }); }
-          else { skipped.push(a.name + (out.note ? " — " + out.note : "")); }
-        } catch (err) {
-          skipped.push(a.name + " — couldn't be opened");
-        }
-      }
+      var got = await scanAttachments(item, function (name, n, total) {
+        setStatus("work", "Reading " + name + " (" + n + " of " + total + ")…");
+      });
+      var scanned = got.scanned, skipped = got.skipped;
 
       var received = "";
       try {
@@ -788,6 +777,7 @@
         homeCity: (s.homeCity || ""),
         myName: myName,
         myDomain: myDomain,
+        formLabels: s.formLabels || null,
         attachments: scanned,
       });
 
@@ -988,6 +978,155 @@
       wrap.appendChild(b);
     });
     box.appendChild(wrap);
+  }
+
+  // -------------------------------------------- teach it your own form
+
+  /**
+   * Every attachment on the open message, decoded to text.
+   *
+   * Shared by "Fill from this email" and "Learn from this email's attachment",
+   * because the two need exactly the same thing and a second copy of this
+   * would drift out of step with the first.
+   */
+  async function scanAttachments(item, onProgress) {
+    var atts = (item.attachments || []).filter(function (a) { return a && !a.isInline; });
+    var scanned = [], skipped = [];
+    for (var i = 0; i < atts.length; i++) {
+      var a = atts[i];
+      if (onProgress) { onProgress(a.name, i + 1, atts.length); }
+      try {
+        var got = await attachmentBytes(item, a);
+        if (got.text) { scanned.push({ name: a.name, text: got.text }); continue; }
+        if (got.note) { skipped.push(a.name + " — " + got.note); continue; }
+        var out = await TdAttach.attachmentText(a.name, got.bytes);
+        if (out.text) { scanned.push({ name: a.name, text: out.text }); }
+        else { skipped.push(a.name + (out.note ? " — " + out.note : "")); }
+      } catch (err) {
+        skipped.push(a.name + " — couldn't be opened");
+      }
+    }
+    return { scanned: scanned, skipped: skipped };
+  }
+
+  var learnFound = [];   // [{label, field, known}] from the last scan
+
+  async function learnScan() {
+    var item = Office.context.mailbox && Office.context.mailbox.item;
+    if (!item) { setStatus("error", "Open the email your blank form is attached to first."); return; }
+    if (typeof TdMail === "undefined" || typeof TdAttach === "undefined") {
+      setStatus("error", "This pane is a cached older version — close it, reopen it, and check the build number at the top.");
+      return;
+    }
+    var btn = byId("learnScan");
+    if (btn) { btn.disabled = true; }
+    setStatus("work", "Reading the attachment…");
+    try {
+      var res = await scanAttachments(item, function (name, n, total) {
+        setStatus("work", "Reading " + name + " (" + n + " of " + total + ")…");
+      });
+      if (!res.scanned.length) {
+        setStatus("error", "Nothing readable was attached." +
+          (res.skipped.length ? " Skipped: " + res.skipped.join("; ") : ""));
+        return;
+      }
+      // The form is the attachment with the most labels in it, not the
+      // biggest one — an agenda can be far longer and have none.
+      var aliases = settings().formLabels || {};
+      var best = null;
+      res.scanned.forEach(function (a) {
+        var found = TdMail.discoverLabels(a.text, aliases);
+        if (!best || found.length > best.found.length) { best = { name: a.name, found: found }; }
+      });
+      learnFound = best.found;
+      renderLearn(best.name);
+      setStatus("info", "Found " + best.found.length + " labels in " + best.name +
+        ". Check the ones marked new, then save.");
+    } catch (e) {
+      setStatus("error", "Couldn't read the attachment: " + ((e && e.message) || e));
+    } finally {
+      if (btn) { btn.disabled = false; }
+    }
+  }
+
+  function renderLearn(fileName) {
+    var box = byId("learnList");
+    if (!box) { return; }
+    box.innerHTML = "";
+    if (!learnFound.length) { box.textContent = "No labels found in " + fileName + "."; return; }
+
+    var head = document.createElement("p");
+    head.className = "f-head";
+    var newCount = learnFound.filter(function (f) { return !f.known; }).length;
+    head.textContent = fileName + " — " + learnFound.length + " labels, " +
+      (learnFound.length - newCount) + " recognised, " + newCount + " for you to assign";
+    box.appendChild(head);
+
+    var ul = document.createElement("ul");
+    ul.className = "learn-list";
+    learnFound.forEach(function (f, i) {
+      var li = document.createElement("li");
+      var name = document.createElement("span");
+      name.className = "f-name";
+      name.textContent = f.label;
+      if (!f.known) {
+        var tag = document.createElement("span");
+        tag.className = "learn-new";
+        tag.textContent = "new";
+        name.appendChild(tag);
+      }
+      var sel = document.createElement("select");
+      sel.setAttribute("data-idx", String(i));
+      var none = document.createElement("option");
+      none.value = "";
+      none.textContent = "(ignore this label)";
+      sel.appendChild(none);
+      TdMail.MAPPABLE.forEach(function (m) {
+        var o = document.createElement("option");
+        o.value = m.field;
+        o.textContent = m.text;
+        if (m.field === f.field) { o.selected = true; }
+        sel.appendChild(o);
+      });
+      sel.addEventListener("change", function () { learnFound[i].field = sel.value; });
+      li.appendChild(name);
+      li.appendChild(sel);
+      ul.appendChild(li);
+    });
+    box.appendChild(ul);
+    setProp("learnSave", "hidden", false);
+    setProp("learnClear", "hidden", false);
+  }
+
+  /**
+   * Save only what DIFFERS from what Travel Desk already worked out.
+   *
+   * Storing all 33 labels would mean this org's copy of the built-in wording
+   * silently overrides future improvements to it, and roamingSettings has a
+   * 32 KB ceiling shared with everything else. Only the corrections are kept.
+   */
+  function learnSave() {
+    var map = {};
+    learnFound.forEach(function (f) {
+      // Only a DIFFERENCE from the built-in table is worth keeping - including
+      // an explicit blank, which means "stop reading this label".
+      if (f.field !== f.builtin) { map[f.label] = f.field; }
+    });
+    saveSettings({ formLabels: map });
+    var n = Object.keys(map).length;
+    setStatus("info", n
+      ? "Saved " + n + " label" + (n === 1 ? "" : "s") + " for your form. " +
+        "Regenerate your setup code so travelers get it too."
+      : "Nothing to save — every label already matched the built-in wording.");
+  }
+
+  function learnClear() {
+    saveSettings({ formLabels: {} });
+    learnFound = [];
+    setText("learnList", "Cleared — back to the built-in wording.");
+    setProp("learnSave", "hidden", true);
+    setProp("learnClear", "hidden", true);
+    setStatus("info", "Your form's custom wording was removed.");
   }
 
   function openPlannerSetup() {

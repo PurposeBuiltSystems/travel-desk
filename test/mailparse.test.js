@@ -452,12 +452,122 @@ check("and says the form is where it came from",
 check("the email still supplies what the form left out",
   pre6.fields.cRegistration, 675);
 
+// The form carries TWO third-party entities with identical labels. Reading
+// the second one's figures as the first misdirects a receivable.
+var TWO_TP = [
+  "Registration Fee: $ 450.00 (meals included? How many?) 2B 1L 0D",
+  "Additional Fees (and what they are for): $ 85.00 conference banquet ticket",
+  "3rd Party Spend Authorization",
+  "First 3rd Party Entity",
+  "Name: Federal Highway Administration",
+  "Project Number: EDC8-IA-2026",
+  "Do you have the 3rd party packet to attach? Yes X No ",
+  "Maximum Reimbursement Amount: $ 900.00",
+  "Reimbursement Items (Select all that apply):",
+  "Lodging/Hotel Costs: checked",
+  "Meals: checked",
+  "Reimbursement Notes: Invitational travel, per diem rate only",
+  "Second 3rd Party Entity (if applicable)",
+  "Name: Midwest Transportation Consortium",
+  "Project Number: MTC-4471",
+  "Do you have the 3rd party packet to attach? Yes  No X",
+  "Maximum Reimbursement Amount: $ 250.00",
+  "Reimbursement Items (Select all that apply):",
+  "Ground Transportation Costs: checked",
+  "Reimbursement Notes: Covers the rental car only",
+].join("\n");
+
+var tp = M.formFields("Name of Conference: EDC-8 Peer Exchange\nLocation: St. Louis, MO\n" +
+  "Departure Date: 10/14/2026\n" + TWO_TP);
+
+check("first entity name", tp.tp1Name, "Federal Highway Administration");
+check("first project number", tp.tp1Project, "EDC8-IA-2026");
+check("first max reimbursement", tp.tp1Max, 900);
+check("first entity's packet is marked yes", tp.tp1Packet, true);
+check("first entity notes", tp.tp1Notes, "Invitational travel, per diem rate only");
+check("first entity lodging", tp.tp1Lodging, true);
+check("first entity meals", tp.tp1Meals, true);
+check("second entity name", tp.tp2Name, "Midwest Transportation Consortium");
+check("second project number", tp.tp2Project, "MTC-4471");
+check("second max reimbursement", tp.tp2Max, 250);
+check("second entity's packet is not marked yes", tp.tp2Packet, undefined);
+check("second entity notes", tp.tp2Notes, "Covers the rental car only");
+check("second entity ground transport", tp.tp2Ground, true);
+check("the second entity does not inherit the first's categories", tp.tp2Lodging, undefined);
+
+check("breakfasts included", tp.cMealsB, 2);
+check("lunches included", tp.cMealsL, 1);
+check("zero dinners is not a value", tp.cMealsD, undefined);
+check("additional fees amount", tp.cAdditional, 85);
+check("and what they were for", tp.cAdditionalDesc, "conference banquet ticket");
+
 // ------------------------------------------------------------------- code
 
 check("registration code", M.findCode("Code: MV59BR3A"), "MV59BR3A");
 check("confirmation number", M.findCode("Confirmation number: A8F32K91"), "A8F32K91");
 check("a ZIP code is not a confirmation code", M.findCode("Ames, IA 50010"), "");
 check("no code present", M.findCode("Thanks for registering."), "");
+
+// ------------------------------------ every field on the real DOT form
+//
+// The blank template's text, verbatim from the attachment in Matt's mailbox,
+// with each printed field filled. This is a coverage test, not a parsing one:
+// its job is to fail the day a field silently stops being read.
+
+var BLANK = require("./fixtures-dot-form.js");
+var FULL = BLANK
+  .replace(/Name & C ost Center: _+/, "Name & C ost Center: Matthew Miller 300000")
+  .replace(/Other Staff Attending: _+ _/, "Other Staff Attending: Cedric Wilkinson, Deanne Popp")
+  .replace(/Name of Conference: _+/, "Name of Conference: EDC-8 Midwest Peer Exchange")
+  .replace(/Location: _+ _+/, "Location: Hyatt Regency 315 Chestnut St, St. Louis, MO 63102")
+  .replace(/Conference Dates & Times: _+ _/, "Conference Dates & Times: 10/15/26 7:00 am to 5:00 pm")
+  .replace(/Departure Date: _+/, "Departure Date: 10/14/2026")
+  .replace(/Return Date: _+ _+/, "Return Date: 10/15/2026")
+  .replace(/attending\):  _+ _+  _+ _+/, "attending): Matt is lead for Connected Corridors for Iowa on EDC round 8.")
+  .replace(/Stat e Vehicle:  /, "Stat e Vehicle: checked ")
+  .replace(/flight cost\): \$ _+/, "flight cost): $ 770 miles")
+  .replace(/Luggage Fees: \$ _+/, "Luggage Fees: $ 65")
+  .replace(/Parking: \$ _+/, "Parking: $ 40")
+  .replace(/Lodging: _+ nights @ \$ _+   = \$ _+/, "Lodging: 1 nights @ $ 176.90 = $ 176.90")
+  .replace(/Registration Fee: \$ _+ \(meals included\? How many\?\) _+B_+L_+D/,
+           "Registration Fee: $ 250 (meals included? How many?) 1B 1L 0D")
+  .replace(/Taxi\/Uber Fees: \$ _+/, "Taxi/Uber Fees: $ 32")
+  .replace(/for\): \$ _+ _+ _+  _+ _+/, "for): $ 85 conference banquet ticket")
+  .replace(/First   3rd Party Entity  Name: _+/, "First   3rd Party Entity  Name: Federal Highway Administration")
+  .replace(/Project Number: _+/, "Project Number: EDC8-IA-2026")
+  .replace(/packet to attach\? Yes _+ No _+/, "packet to attach? Yes X No ")
+  .replace(/Maximum Reimbursement Amount: \$ _+/, "Maximum Reimbursement Amount: $ 900") +
+  "  Reimbursement Items (Select all that apply):  Lodging/Hotel Costs: checked  Meals: checked" +
+  "  Reimbursement Notes: Per diem rate only" +
+  "  Second   3rd Party Entity (if applicable)  Name: Midwest Transportation Consortium" +
+  "  Project Number: MTC-4471  Do you have the 3rd party packet to attach? Yes  No X" +
+  "  Maximum Reimbursement Amount: $ 250" +
+  "  Reimbursement Items (Select all that apply):  Ground Transportation Costs: checked" +
+  "  Reimbursement Notes: Rental car only";
+
+var all = M.formFields(FULL);
+[
+  ["name", "Matthew Miller"], ["costCenter", "300000"],
+  ["otherStaff", "Cedric Wilkinson, Deanne Popp"],
+  ["event", "EDC-8 Midwest Peer Exchange"], ["location", "St. Louis, MO"],
+  ["confDates", "10/15/26 7:00 am to 5:00 pm"],
+  ["departDate", "2026-10-14"], ["returnDate", "2026-10-15"],
+  ["modeState", true], ["cTravelMode", 770], ["cLuggage", 65], ["cParking", 40],
+  ["cLodgingNights", 1], ["cLodgingRate", 176.9], ["cRegistration", 250],
+  ["cMealsB", 1], ["cMealsL", 1], ["cTaxi", 32],
+  ["cAdditional", 85], ["cAdditionalDesc", "conference banquet ticket"],
+  ["tp1Name", "Federal Highway Administration"], ["tp1Project", "EDC8-IA-2026"],
+  ["tp1Packet", true], ["tp1Max", 900], ["tp1Lodging", true], ["tp1Meals", true],
+  ["tp1Notes", "Per diem rate only"],
+  ["tp2Name", "Midwest Transportation Consortium"], ["tp2Project", "MTC-4471"],
+  ["tp2Max", 250], ["tp2Ground", true], ["tp2Notes", "Rental car only"],
+].forEach(function (pair) {
+  check("real form field: " + pair[0], all[pair[0]], pair[1]);
+});
+check("reason for travel is read",
+  /Connected Corridors/.test(all.reason || ""), true);
+check("the same template with nothing filled in still yields nothing",
+  JSON.stringify(M.formFields(BLANK)), "{}");
 
 if (failures) {
   console.error("\n" + failures + " mail-parsing test(s) failed.");

@@ -649,7 +649,17 @@
     otherStaff: "Other travelers", reason: "Reason for travel",
     modePersonal: "Personal vehicle", modeState: "State vehicle",
     modeAir: "Commercial air", cTaxi: "Taxi / rideshare $",
+    cMealsB: "Breakfasts included", cMealsL: "Lunches included",
+    cMealsD: "Dinners included", cAdditional: "Additional $",
+    cAdditionalDesc: "Additional fees are for",
     tp1Project: "3rd party — project number", tp1Max: "3rd party — max reimbursement $",
+    tp1Packet: "3rd party packet to attach", tp1Notes: "3rd party — notes",
+    tp2Name: "3rd party #2 — entity", tp2Contact: "3rd party #2 — billing contact",
+    tp2Project: "3rd party #2 — project number", tp2Max: "3rd party #2 — max reimbursement $",
+    tp2Packet: "3rd party #2 packet to attach", tp2Notes: "3rd party #2 — notes",
+    tp2Reg: "3rd party #2 covers registration", tp2Lodging: "3rd party #2 covers lodging",
+    tp2Air: "3rd party #2 covers airfare/luggage", tp2Meals: "3rd party #2 covers meals",
+    tp2Ground: "3rd party #2 covers ground transport",
     event: "Conference / event name", location: "Location",
     eventStart: "Event start", confDates: "Conference dates",
     departDate: "Departure", returnDate: "Return",
@@ -827,9 +837,11 @@
     });
 
     // A filled section that is still collapsed reads as not filled at all.
-    if (filled.some(function (f) { return f.id.indexOf("tp1") === 0; })) {
-      setAttrIf("tp1", "open", "open");
-    }
+    ["tp1", "tp2"].forEach(function (sec) {
+      if (filled.some(function (f) { return f.id.indexOf(sec) === 0; })) {
+        setAttrIf(sec, "open", "open");
+      }
+    });
 
     // The costs only re-total on 'input', which assigning .value does not fire.
     try { refreshTotal(); refreshFyLine(); } catch (e) { /* cosmetic */ }

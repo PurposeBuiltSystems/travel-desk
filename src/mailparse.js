@@ -845,8 +845,6 @@
     { label: "Registration Fee", field: "cRegistration" },
     { label: "Taxi/Uber Fees", field: "cTaxi" },
     { label: "Additional Fees", field: "cAdditional" },
-    { label: "Project Number", field: "tp1Project" },
-    { label: "Maximum Reimbursement Amount", field: "tp1Max" },
     { label: "Location", field: "location" },
     { label: "Parking", field: "cParking" },
   ];
@@ -858,14 +856,27 @@
     { label: "Personal Vehicle", field: "modePersonal" },
     { label: "State Vehicle", field: "modeState" },
     { label: "Commercial Air", field: "modeAir" },
-    { label: "Registration Fees", field: "tp1Reg" },
-    { label: "Lodging/Hotel Costs", field: "tp1Lodging" },
-    { label: "Airfare/Luggage Fees", field: "tp1Air" },
-    { label: "Meals", field: "tp1Meals" },
-    { label: "Ground Transportation Costs", field: "tp1Ground" },
   ];
 
-  var MONEY_FIELD = /^(cTravelMode|cLuggage|cParking|cRegistration|cTaxi|cAdditional|tp1Max)$/;
+  // The form carries TWO third-party entities with identical labels, so these
+  // are matched by position within the 3rd-party section rather than by a
+  // single first-match: the second entity's project number is not the first
+  // entity's, and reading it as such misdirects a receivable.
+  var TP_TEXT = [
+    { label: "Name", suffix: "Name" },
+    { label: "Project Number", suffix: "Project" },
+    { label: "Maximum Reimbursement Amount", suffix: "Max" },
+    { label: "Reimbursement Notes", suffix: "Notes" },
+  ];
+  var TP_CHECK = [
+    { label: "Registration Fees", suffix: "Reg" },
+    { label: "Lodging/Hotel Costs", suffix: "Lodging" },
+    { label: "Airfare/Luggage Fees", suffix: "Air" },
+    { label: "Meals", suffix: "Meals" },
+    { label: "Ground Transportation Costs", suffix: "Ground" },
+  ];
+
+  var MONEY_FIELD = /^(cTravelMode|cLuggage|cParking|cRegistration|cTaxi|cAdditional|tp1Max|tp2Max)$/;
   var DATE_FIELD = /^(departDate|returnDate)$/;
 
   /**
@@ -888,28 +899,117 @@
     // form. The optional parenthetical is needed because the real template
     // writes "Cost of Travel Mode (miles, estimated flight cost):".
     var PAREN = "\\s*(?:\\([^)]{0,60}\\))?\\s*";
+    // Section headings end a value even though they carry no colon. Without
+    // them a value simply runs on: "Project Number: EDC8-IA-2026 Do you have
+    // the 3rd party packet to attach?" is what the project number became.
+    var HEADINGS = "(?:" + [
+      "3rd Party Spend Authorization", "First 3rd Party Entity",
+      "Second 3rd Party Entity", "Reimbursement Items", "Reimbursement Notes",
+      "Do you have", "Mode of Travel", "Travel Authorization Form",
+    ].map(looseLabel).join("|") + ")";
     var STOP = "(?:" +
       FORM_LABELS.map(function (o) { return looseLabel(o.label); }).join("|") +
       "|" + looseLabel("Lodging") +
       "|" + looseLabel("Mode of Travel") +
       "|" + looseLabel("Reimbursement Items") +
       "|" + looseLabel("Reimbursement Notes") +
-      ")" + PAREN + "[:\\-]";
+      ")" + PAREN + "[:\\-]|" + HEADINGS;
 
     FORM_LABELS.forEach(function (spec) {
       // EVERY occurrence, not the first. A filled PDF yields the printed page
       // (where the label is followed by an empty underscore rule) AND the
       // typed field values appended after it. Stopping at the first match
       // meant reading the blank rendering of a form somebody had filled in.
-      var rx = new RegExp(looseLabel(spec.label) + PAREN + "[:\\-]\\s*([\\s\\S]{0,140}?)(?=" +
+      var rx = new RegExp(looseLabel(spec.label) + PAREN + "[:\\-]\\s*([\\s\\S]{0,200}?)(?=" +
         STOP + "|\\n|$)", "gi");
       var m;
       while ((m = rx.exec(t))) {
         var v = m[1].replace(/^[\s$]+/, "").replace(/[\s.:;,\-=]+$/, "").trim();
-        if (v && v.length >= 2) { out[spec.field] = v; break; }
+        // An answer has at least one letter or digit. Length alone let the
+        // stray single underscore the template leaves after a rule ("____ _")
+        // count as a filled-in value.
+        if (/[A-Za-z0-9]/.test(v)) { out[spec.field] = v; break; }
         if (rx.lastIndex === m.index) { rx.lastIndex++; }
       }
     });
+
+    // --- both third-party entities ---
+    // Scoped to the 3rd-party section when its heading survived extraction.
+    // When it did not, everything else is still worth reading - but the bare
+    // label "Name" is not, because outside that section it matches "Name of
+    // Conference" and "Name & Cost Center".
+    var tpAt = t.search(/3\s*r\s*d\s+P\s*a\s*r\s*t\s*y/i);
+    if (true) {
+      var scoped = tpAt >= 0;
+      var scope = scoped ? t.slice(tpAt) : t;
+      var TP_STOP = "(?:" +
+        TP_TEXT.map(function (o) { return looseLabel(o.label); }).join("|") + "|" +
+        TP_CHECK.map(function (o) { return looseLabel(o.label); }).join("|") + "|" +
+        looseLabel("Reimbursement Items") + "|" + looseLabel("Do you have") +
+        ")" + PAREN + "[:\\-?]|" + HEADINGS;
+
+      // Split on the "Second 3rd Party Entity" heading and parse each half on
+      // its own. Counting occurrences instead looks right until only the
+      // SECOND entity ticks a category - then the single tick found is
+      // credited to the first, and the wrong body gets billed.
+      var half = scope.search(/S\s*e\s*c\s*o\s*n\s*d\s+3\s*r\s*d\s+P\s*a\s*r\s*t\s*y/i);
+      var sections = half > 0 ? [scope.slice(0, half), scope.slice(half)] : [scope];
+
+      sections.forEach(function (sec, idx) {
+        var n = idx + 1;
+        TP_TEXT.forEach(function (spec) {
+          if (!scoped && spec.label === "Name") { return; }
+          var rx = new RegExp(looseLabel(spec.label) + PAREN + "[:\\-]\\s*([\\s\\S]{0,200}?)(?=" +
+            TP_STOP + "|\\n|$)", "gi");
+          var vals = [], m;
+          while (vals.length < 2 && (m = rx.exec(sec))) {
+            var v = m[1].replace(/^[\s$]+/, "").replace(/[\s.:;,\-=]+$/, "").trim();
+            if (/[A-Za-z0-9]/.test(v)) { vals.push(v); }
+            if (rx.lastIndex === m.index) { rx.lastIndex++; }
+          }
+          // Unsectioned text falls back to position: first value is entity 1.
+          vals.slice(0, sections.length > 1 ? 1 : 2).forEach(function (v, i) {
+            out["tp" + (sections.length > 1 ? n : i + 1) + spec.suffix] = v;
+          });
+        });
+
+        TP_CHECK.forEach(function (spec) {
+          var rx = new RegExp(looseLabel(spec.label) + "\\s*[:\\-]?\\s*(?:checked|yes|x|on|true)\\b", "gi");
+          var k = 0;
+          while (k < 2 && rx.exec(sec)) {
+            k++;
+            out["tp" + (sections.length > 1 ? n : k) + spec.suffix] = true;
+            if (sections.length > 1) { break; }
+          }
+        });
+
+        // "Do you have the 3rd party packet to attach? Yes ___ No ___" - what
+        // decides it is whether anything was written between Yes and No.
+        var prx = /packet[^?\n]{0,40}\?\s*Y\s*e\s*s\s*[:\-]?\s*([\s\S]{0,14}?)\s*N\s*o\b/gi;
+        var pm, pn = 0;
+        while (pn < 2 && (pm = prx.exec(sec))) {
+          pn++;
+          if (/[a-wyz0-9\u2713\u2714x]/i.test(pm[1])) {
+            out["tp" + (sections.length > 1 ? n : pn) + "Packet"] = true;
+          }
+          if (sections.length > 1) { break; }
+        }
+      });
+    }
+
+    // --- meals included with registration ---
+    // Printed as "(meals included? How many?) ___B___L___D"; a fillable copy
+    // may instead carry three separate fields.
+    var mealSeg = /meals\s+included[^)\n]{0,30}\)?\s*([\s\S]{0,60})/i.exec(t);
+    [["B", "cMealsB", "Breakfast"], ["L", "cMealsL", "Lunch"], ["D", "cMealsD", "Dinner"]]
+      .forEach(function (p) {
+        if (mealSeg) {
+          var m2 = new RegExp("(\\d{1,2})\\s*" + p[0] + "\\b").exec(mealSeg[1]);
+          if (m2 && +m2[1] > 0) { out[p[1]] = parseInt(m2[1], 10); return; }
+        }
+        var m3 = new RegExp("(?:^|\\n)\\s*(?:" + p[0] + "|" + p[2] + ")\\s*[:\\-]\\s*(\\d{1,2})\\s*$", "im").exec(t);
+        if (m3 && +m3[1] > 0) { out[p[1]] = parseInt(m3[1], 10); }
+      });
 
     FORM_CHECKS.forEach(function (spec) {
       var rx = new RegExp(looseLabel(spec.label) + "\\s*[:\\-]?\\s*(checked|yes|x|on|true)\\b", "i");
@@ -962,6 +1062,14 @@
     if (out.location) {
       var loc = findLocation(out.location);
       if (loc.value) { out.location = loc.value; }
+    }
+
+    // "Additional Fees (and what they are for): $ 85.00 conference banquet" -
+    // the amount and the explanation share one line on the form, and the
+    // explanation is the half that has to survive onto the authorization.
+    if (out.cAdditional) {
+      var add = /^\s*\$?\s*([0-9][0-9,]*(?:\.[0-9]{2})?)\s*(.*)$/.exec(String(out.cAdditional));
+      if (add && add[2].trim().length > 2) { out.cAdditionalDesc = add[2].trim(); }
     }
 
     Object.keys(out).forEach(function (k) {

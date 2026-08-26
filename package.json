@@ -5,13 +5,14 @@
   "private": true,
   "scripts": {
     "check": "node tools/check-undeclared.js",
-    "test": "node tools/check-undeclared.js && node test/coord.test.js && node test/form.test.js && node test/mailparse.test.js && node test/attachtext.test.js",
+    "test": "node tools/check-undeclared.js && node test/coord.test.js && node test/form.test.js && node test/mailparse.test.js && node test/attachtext.test.js && node test/copytrip.test.js",
     "validate": "office-addin-manifest validate manifest.xml"
   },
   "author": "Matthew Miller",
   "license": "MIT",
   "devDependencies": {
     "acorn": "^8.16.0",
+    "jsdom": "^29.1.1",
     "jszip": "^3.10.1",
     "office-addin-manifest": "^2.0.4"
   }

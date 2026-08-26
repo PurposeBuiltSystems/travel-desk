@@ -549,6 +549,60 @@
     return withCode[0] || null;
   }
 
+  /**
+   * A filed request, small enough to keep 40 of them.
+   *
+   * Everything on the form is worth carrying into the next request, but
+   * roamingSettings caps this add-in at 32 KB across every setting it has, and
+   * forty full models would exceed that on their own - at which point saveAsync
+   * fails and the trip list stops recording anything. Empty boxes carry no
+   * information, so they are dropped: a typical request loses two thirds of its
+   * size and nothing a person would notice.
+   */
+  function slimModel(m) {
+    if (!m || typeof m !== "object") { return {}; }
+    var out = {};
+    Object.keys(m).forEach(function (k) {
+      var v = m[k];
+      if (v === "" || v === null || v === undefined || v === false) { return; }
+      if (Array.isArray(v)) {
+        var arr = v.map(slimModel).filter(function (x) { return Object.keys(x).length; });
+        if (arr.length) { out[k] = arr; }
+        return;
+      }
+      if (typeof v === "object") {
+        var sub = slimModel(v);
+        if (Object.keys(sub).length) { out[k] = sub; }
+        return;
+      }
+      // "0" is what an untouched number box holds, and carrying it forward
+      // would print a row of zero costs onto next year's authorization.
+      if (v === 0 || v === "0") { return; }
+      out[k] = v;
+    });
+    return out;
+  }
+
+  /**
+   * What a copied request should carry, and what it must not.
+   *
+   * Dates already in the past cannot be right for a new trip, and a stale
+   * departure date is the one mistake here with real consequences - it would
+   * be signed, filed, and reconciled against a planner row that says the
+   * traveller left last March. They are dropped and named, rather than
+   * carried across and hopefully noticed.
+   */
+  function copyForNewTrip(saved, todayIso) {
+    var m = JSON.parse(JSON.stringify(saved || {}));
+    var today = String(todayIso || "").slice(0, 10);
+    var dropped = [];
+    ["eventStart", "departDate", "returnDate"].forEach(function (k) {
+      if (m[k] && today && m[k] < today) { delete m[k]; dropped.push(k); }
+    });
+    if (dropped.length) { delete m.confDates; dropped.push("confDates"); }
+    return { model: m, dropped: dropped };
+  }
+
   var api = {
     pickPlanner: pickPlanner,
     STATUS: STATUS,
@@ -567,6 +621,8 @@
     reminderHtml: reminderHtml,
     matchBooking: matchBooking,
     BOOKING_LOOKBACK_DAYS: LOOKBACK_DAYS,
+    slimModel: slimModel,
+    copyForNewTrip: copyForNewTrip,
     computeTotals: computeTotals,
     subjectLine: subjectLine,
     fiscalLabel: fiscalLabel,

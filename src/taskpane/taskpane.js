@@ -486,11 +486,51 @@
     catch (e) { return []; }
   }
 
+  // Trips get at most this much of the 32 KB roamingSettings ceiling. The rest
+  // belongs to the planner list, the org profile and the form-label mapping,
+  // and a saveAsync that fails takes the whole trip list with it.
+  var TRIPS_BUDGET = 16 * 1024;
+
+  // Forty trips of bare history cost 15 KB on their own, which left nothing
+  // for the forms and made "copy to a new request" quietly do nothing on a
+  // busy mailbox. Twenty-five is still years of one person's travel, and it
+  // leaves room for the thing that is actually useful.
+  var TRIPS_KEPT = 25;
+
+  /**
+   * Keep every trip; keep as many COPYABLE ones as will fit.
+   *
+   * The full form is what makes "copy to a new request" work, and it is also
+   * the only large thing here. A fixed count was the obvious rule and the
+   * wrong one - requests vary several-fold in size, so any number that is safe
+   * for a long one wastes most of the budget on a short one. Newest first,
+   * because that is the one somebody will want to copy.
+   */
   function saveTrips(list) {
     try {
-      Office.context.roamingSettings.set(TRIPS_KEY, JSON.stringify(list.slice(-40)));
+      var keep = list.slice(-TRIPS_KEPT);
+      var stubs = keep.map(function (t) {
+        var c = {};
+        Object.keys(t).forEach(function (k) { if (k !== "form") { c[k] = t[k]; } });
+        return c;
+      });
+      var size = JSON.stringify(stubs).length;
+      var out = stubs;
+      for (var i = keep.length - 1; i >= 0; i--) {
+        if (!keep[i].form) { continue; }
+        var cost = JSON.stringify(keep[i].form).length + 8;
+        if (size + cost > TRIPS_BUDGET) { break; }
+        out[i].form = keep[i].form;
+        size += cost;
+      }
+      Office.context.roamingSettings.set(TRIPS_KEY, JSON.stringify(out));
       persistSettings("your trip list");
     } catch (e) { /* best-effort */ }
+  }
+
+  /** How many of the stored trips can still be copied from. */
+  function copyableCount() {
+    return trips().filter(function (t) { return t && t.form; }).length;
   }
 
   function addTrip(m) {
@@ -507,6 +547,10 @@
         return { name: t.name, contact: t.contact || "", project: t.project || "", maxReimb: t.maxReimb };
       }),
       funding: m.funding || m.tewd || "", costCenter: m.costCenter || "",
+      // The whole request, minus its empty boxes, so "copy this one" gives
+      // back everything typed rather than the handful of fields the list
+      // happens to display.
+      form: TravelForm.slimModel(m),
     });
     saveTrips(list);
     renderTrips();
@@ -1662,8 +1706,14 @@
         (t.eventStart || t.departDate || "") + " \u00b7 " + chip +
         (t.bookingLink ? ' \u00b7 <a href="' + t.bookingLink + '" target="_blank" rel="noopener">open booking email</a>' : "") +
         (t.status !== "booked" ? ' \u00b7 <button type="button" class="chip-del" data-book="' + i + '">mark booked</button>' : "") +
+        ' \u00b7 <button type="button" class="chip-del" data-copy="' + i + '">copy to a new request</button>' +
         "</div>";
     }).join("");
+    el.querySelectorAll("[data-copy]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        copyTrip(Number(b.getAttribute("data-copy")));
+      });
+    });
     el.querySelectorAll("[data-book]").forEach(function (b) {
       b.addEventListener("click", function () {
         var list2 = trips();
@@ -1674,6 +1724,117 @@
         renderTrips();
       });
     });
+  }
+
+  var PARTIAL_NOTE = "Only the basics came across \u2014 this trip is old enough that " +
+    "the rest of its form was let go to stay inside what Outlook lets an add-in store.";
+
+  var COPY_LABELS = {
+    eventStart: "Event start", departDate: "Departure", returnDate: "Return",
+    confDates: "Conference dates",
+  };
+
+  /**
+   * Start a new request from one already filed.
+   *
+   * Most trips are a variation on a previous one - the same conference a year
+   * later, the same site visit with different dates - and retyping twenty
+   * fields to change three is the tax this was built to remove.
+   */
+  function copyTrip(i) {
+    var list = trips();
+    var t = list[i];
+    if (!t) { return; }
+
+    // Two kinds of trip copy only partly: one filed before the full form was
+    // ever stored, and one old enough that its form was dropped to stay inside
+    // the settings budget. Both still give the basics, and both say so rather
+    // than handing back a form that looks complete and is not.
+    var partial = !t.form;
+    var saved = t.form || {
+      name: t.name, event: t.event, location: t.location,
+      eventStart: t.eventStart, departDate: t.departDate, returnDate: t.returnDate,
+      funding: t.funding, costCenter: t.costCenter,
+      thirdParties: (t.thirdParties || []).map(function (x) {
+        return { name: x.name, contact: x.contact, project: x.project, maxReimb: x.maxReimb };
+      }),
+    };
+
+    var res = TravelForm.copyForNewTrip(saved, new Date().toISOString());
+    applyModel(res.model);
+
+    var where = byId("event") || byId("name");
+    if (where && where.scrollIntoView) {
+      try { where.scrollIntoView({ behavior: "smooth", block: "center" }); }
+      catch (e) { where.scrollIntoView(); }
+    }
+
+    if (res.dropped.length) {
+      res.dropped.forEach(function (k) {
+        var el = byId(k);
+        if (el) { el.style.outline = "2px solid var(--err-fg)"; el.style.outlineOffset = "1px"; }
+      });
+      setStatus("info", "Copied \u201c" + (t.event || "that trip") + "\u201d. " +
+        res.dropped.map(function (k) { return COPY_LABELS[k] || k; }).join(", ") +
+        " \u2014 cleared, because they were in the past. Fill them in, check the costs, " +
+        "then Create travel request." + (partial ? " " + PARTIAL_NOTE : ""));
+    } else {
+      setStatus("info", "Copied \u201c" + (t.event || "that trip") + "\u201d into the form. " +
+        "Check the dates and the costs before you submit." + (partial ? " " + PARTIAL_NOTE : ""));
+    }
+  }
+
+  /** Write a saved model back onto the form. The inverse of model(). */
+  function applyModel(m) {
+    [
+      "name", "costCenter", "division", "bureau", "otherStaff", "event", "location",
+      "eventStart", "attendeeRole", "confDates", "departDate", "returnDate",
+      "reason", "meetingLink", "comments", "funding",
+    ].forEach(function (k) { setVal(k, m[k] || ""); });
+
+    var modes = m.modes || {};
+    setProp("modePersonal", "checked", !!modes.personal);
+    setProp("modeState", "checked", !!modes.state);
+    setProp("modeAir", "checked", !!modes.air);
+
+    var c = m.costs || {};
+    var COSTS = {
+      cTravelMode: "travelMode", cLuggage: "luggage", cParking: "parking",
+      cTaxi: "taxi", cLodgingNights: "lodgingNights", cLodgingRate: "lodgingRate",
+      cRegistration: "registration", cAdditional: "additional",
+      cAdditionalDesc: "additionalDesc", cMealsB: "mealsB", cMealsL: "mealsL",
+      cMealsD: "mealsD",
+    };
+    Object.keys(COSTS).forEach(function (id) {
+      // The three meal counts start life at 0 on a blank form, and slimming
+      // drops a zero as "nothing was entered". Restoring them empty would
+      // leave a copied request looking subtly unlike a fresh one, so they go
+      // back to the same default the page ships with.
+      var dflt = /^cMeals[BLD]$/.test(id) ? "0" : "";
+      setVal(id, c[COSTS[id]] || dflt);
+    });
+
+    var tps = m.thirdParties || [];
+    [1, 2].forEach(function (n) {
+      var t = tps[n - 1] || {};
+      setVal("tp" + n + "Name", t.name || "");
+      setVal("tp" + n + "Contact", t.contact || "");
+      setVal("tp" + n + "Project", t.project || "");
+      setVal("tp" + n + "Max", t.maxReimb || "");
+      setProp("tp" + n + "Packet", "checked", !!t.packet);
+      // Spelled out rather than lowercased: the boxes are tp1Reg and tp1Air
+      // but the stored keys are "registration" and "airfare", so deriving one
+      // from the other silently loses those two ticks on every copy.
+      var ITEMS = { Reg: "registration", Lodging: "lodging", Air: "airfare",
+                    Meals: "meals", Ground: "ground" };
+      Object.keys(ITEMS).forEach(function (k) {
+        setProp("tp" + n + k, "checked", !!(t.items && t.items[ITEMS[k]]));
+      });
+      setVal("tp" + n + "Notes", t.notes || "");
+      if (t.name) { setAttrIf("tp" + n, "open", "open"); }
+    });
+
+    try { refreshTotal(); refreshFyLine(); } catch (e) { /* cosmetic */ }
   }
 
   async function checkBookings() {

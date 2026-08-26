@@ -149,13 +149,33 @@
 
 
 
+  /**
+   * Run one piece of startup without letting it take the pane with it.
+   *
+   * Everything below used to be a single unguarded block, so ONE bad line -
+   * a render that trips over a stored trip, a field a cached page does not
+   * have - threw inside Office.onReady, and Outlook answers that by showing
+   * nothing at all. A blank pane tells the person nothing and tells me less.
+   * Isolated, a failure costs one feature and says which one.
+   */
+  var startupFailures = [];
+  function step(what, fn) {
+    try { fn(); }
+    catch (e) {
+      startupFailures.push(what + " (" + ((e && e.message) || e) + ")");
+      try { if (window.console && console.error) { console.error("Travel Desk startup:", what, e); } }
+      catch (e2) { /* nothing left to try */ }
+    }
+  }
+
   Office.onReady(function () {
+   try {
     // Certification 1100.5.7.1 - sign-out must be reachable.
     var _si = document.getElementById("signIn");
     if (_si) { _si.addEventListener("click", doSignIn); }
     var _so = document.getElementById("signOut");
     if (_so) { _so.addEventListener("click", doSignOut); }
-    renderAuthState();
+    step("the sign-in state", renderAuthState);
     var s = settings();
     if (s.wbUrl) { setVal("wbUrl", s.wbUrl); }
     if (s.tableName) {
@@ -203,8 +223,12 @@
     var tripsHost = byId("trips");
     var tripsEl = tripsHost && tripsHost.querySelector("details");
     if (trips().length === 0 && tripsEl) { tripsEl.removeAttribute("open"); }
-    try { renderReimb(); renderTrips(); renderFirstRun(); refreshCoordVisibility(); }
-    catch (e) { /* stale cached page — wiring below still binds */ }
+    // These were already guarded, but silently: a swallowed failure is exactly
+    // why a half-working pane gives you nothing to go on.
+    step("your trips", renderTrips);
+    step("the reimbursement list", renderReimb);
+    step("the first-run panel", renderFirstRun);
+    step("the coordinator section", refreshCoordVisibility);
     on("savePlanner", "click", savePlanner);
     on("addCols", "click", addLifecycleColumns);
     on("plannerList", "click", function (ev) {
@@ -225,9 +249,9 @@
       var iso = today.getFullYear() + "-" + p2(today.getMonth() + 1) + "-" + p2(today.getDate());
       setVal("wbFy", TravelForm.fiscalLabel(iso, s.fyStartMonth, s.fyPrefix) || "");
     }
-    renderPlannerList();
-    renderPlannerLink();
-    renderVersion();
+    step("the planner list", renderPlannerList);
+    step("the planner link", renderPlannerLink);
+    step("the build indicator", renderVersion);
     // Diagnostic only: never awaited, never blocks startup, and swallows its
     // own failure inside checkPlannerColumns().
     if (s.wbRef && s.tableName) { checkPlannerColumns(); }
@@ -285,7 +309,18 @@
         setVal("confDates", d.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }));
       }
     });
-    refreshFyLine();
+    step("the fiscal-year line", refreshFyLine);
+   } catch (fatal) {
+    // Nothing above should reach here now, but if it does the pane must still
+    // be usable and must say what happened rather than going white.
+    startupFailures.push("startup (" + ((fatal && fatal.message) || fatal) + ")");
+   }
+   if (startupFailures.length) {
+    setStatus("error", "Travel Desk started with " + startupFailures.length +
+      " problem(s): " + startupFailures.join("; ") +
+      ". The rest of the pane still works. If this persists, close and reopen it, " +
+      "and check the build number at the top.");
+   }
   });
 
   // ---------- org profile (share setup with the team) ----------

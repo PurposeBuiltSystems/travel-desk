@@ -1002,11 +1002,22 @@
       var k = norm(L);
       if (seen[k]) { return; }
       seen[k] = 1;
+      // Recognise it the same way the extractor will. Matching exactly here
+      // while formFields matches leniently would ask the coordinator to map
+      // "Locaton" and "Other Staf Atending" - which already work - and bury
+      // the two or three that genuinely need them.
+      var hit = known[k];
+      if (!hit) {
+        Object.keys(known).some(function (kk) {
+          if (looseMatch(L, kk)) { hit = known[kk]; return true; }
+          return false;
+        });
+      }
       out.push({
         label: L,
-        field: (aliases && aliases[L]) || known[k] || "",
-        builtin: known[k] || "",
-        known: !!known[k],
+        field: (aliases && aliases[L]) || hit || "",
+        builtin: hit || "",
+        known: !!hit,
       });
     }
 
@@ -1066,6 +1077,67 @@
     return out;
   }
 
+  /**
+   * Does this field name mean the label we expect, allowing for a few lost
+   * characters?
+   *
+   * A fillable form's field names are often auto-generated from the printed
+   * page, and that extraction loses ligatures - the real Iowa DOT form calls
+   * its boxes "Locaton", "Other Staf Atending" and "Registraton Fee" because
+   * the ti, ff and tt glyphs decoded to nothing. Exact matching finds none of
+   * them. Dropped characters are allowed, up to a fifth of the label; extra
+   * text on the end is ignored, since a name like "Cost of Travel Mode miles,
+   * estmated fight cost" is the label plus the parenthetical beside it.
+   *
+   * Deliberately one-directional: the observed name may be MISSING characters,
+   * never carrying different ones. "Return Date" cannot drift into "Departure
+   * Date" that way.
+   */
+  function looseMatch(observed, expected) {
+    var a = norm(observed), b = norm(expected);
+    if (!a || !b) { return false; }
+    if (a.indexOf(b) === 0) { return true; }
+    var i = 0, skipped = 0;
+    for (var j = 0; j < b.length; j++) {
+      if (i < a.length && a.charAt(i) === b.charAt(j)) { i++; }
+      else { skipped++; }
+    }
+    return skipped <= Math.max(1, Math.floor(b.length * 0.2)) && i >= b.length - skipped;
+  }
+
+  /**
+   * "Label: value" a line at a time, matched leniently.
+   *
+   * The regex pass scans for each label it knows and needs to find it spelled
+   * correctly. When the text came from a form's own field objects it arrives
+   * already split one per line, and the names are whatever the form calls
+   * them - so this pass matches the other way round: take the name the file
+   * actually used, and find which field it means.
+   */
+  function fieldsFromLines(text, aliases) {
+    var out = {};
+    var targets = aliasTable(aliases).concat(FORM_LABELS)
+      .concat(FORM_CHECKS)
+      .concat(TP_TEXT.map(function (o) { return { label: o.label, field: "tp1" + o.suffix }; }))
+      .concat(TP_CHECK.map(function (o) { return { label: o.label, field: "tp1" + o.suffix }; }));
+
+    String(text).split("\n").forEach(function (line) {
+      var m = /^\s*([^:\n]{2,60}?)\s*:\s*(.*)$/.exec(line);
+      if (!m) { return; }
+      var label = m[1];
+      // A trailing "$" or ":" belongs to the printed form, not the answer.
+      var value = m[2].replace(/^[\s$:]+/, "").replace(/[\s.:;,\-=]+$/, "").trim();
+      if (!/[A-Za-z0-9]/.test(value)) { return; }
+      for (var i = 0; i < targets.length; i++) {
+        if (looseMatch(label, targets[i].label)) {
+          if (out[targets[i].field] === undefined) { out[targets[i].field] = value; }
+          return;
+        }
+      }
+    });
+    return out;
+  }
+
   function formFields(text, aliases) {
     var t = clean(text).replace(/_{2,}/g, " ");   // erase the blank rules
     var out = {};
@@ -1098,7 +1170,7 @@
         STOP + "|\\n|$)", "gi");
       var m;
       while ((m = rx.exec(t))) {
-        var v = m[1].replace(/^[\s$]+/, "").replace(/[\s.:;,\-=]+$/, "").trim();
+        var v = m[1].replace(/^[\s$:]+/, "").replace(/[\s.:;,\-=]+$/, "").trim();
         // An answer has at least one letter or digit. Length alone let the
         // stray single underscore the template leaves after a rule ("____ _")
         // count as a filled-in value.
@@ -1113,6 +1185,12 @@
     // label "Name" is not, because outside that section it matches "Name of
     // Conference" and "Name & Cost Center".
     var tpAt = t.search(/3\s*r\s*d\s+P\s*a\s*r\s*t\s*y/i);
+    if (tpAt < 0 && /Maximum\s+Reimbursement|Reimbursement\s+(Items|Notes)/i.test(t)) {
+      // A form whose 3rd-party HEADING did not survive extraction, but whose
+      // 3rd-party-only labels did. "Name" is safe to read here for the same
+      // reason: nothing else on the form is called that.
+      tpAt = 0;
+    }
     if (true) {
       var scoped = tpAt >= 0;
       var scope = scoped ? t.slice(tpAt) : t;
@@ -1190,6 +1268,14 @@
       if (rx.test(t)) { out[spec.field] = true; }
     });
 
+    // Names lifted from a form's own fields are more reliable than a scan of
+    // printed text, but they only exist for a filled fillable form - so they
+    // fill the gaps rather than replacing what was already found.
+    var byLine = fieldsFromLines(t, aliases);
+    Object.keys(byLine).forEach(function (k) {
+      if (out[k] === undefined) { out[k] = byLine[k]; }
+    });
+
     // Only trust this if the text really is a form. "Location" and "Parking"
     // are ordinary words, and a calendar invite's "LOCATION:" line matched one
     // of them and overruled the invite's own parser. Several labels together
@@ -1227,7 +1313,7 @@
     // "Lodging: 2 nights @ $150.00 = $300.00"
     var lodge = new RegExp(looseLabel("Lodging") + "[:\\-]?\\s*(\\d{1,2})\\s*n\\s*i\\s*g\\s*h\\s*t", "i").exec(t);
     if (lodge) { out.cLodgingNights = parseInt(lodge[1], 10); }
-    var rate = /night[^$\n]{0,20}\$\s*([0-9][0-9,]*(?:\.\d{2})?)/i.exec(t);
+    var rate = /night[^$\n]{0,20}\$[\s:]*([0-9][0-9,]*(?:\.\d{2})?)/i.exec(t);
     if (rate) { out.cLodgingRate = toNum(rate[1]); }
 
     // The Location box asks for "City, State" and the planner column is a
@@ -1681,6 +1767,8 @@
     findRole: findRole,
     findSignature: findSignature,
     findCoordinator: findCoordinator,
+    looseMatch: looseMatch,
+    fieldsFromLines: fieldsFromLines,
     scoreTravelEmail: scoreTravelEmail,
     findTravelEmails: findTravelEmails,
     formFields: formFields,

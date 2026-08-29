@@ -713,6 +713,55 @@ check("an event that has already happened scores lower than one ahead",
                        from: "x@example.org" }, { todayIso: "2026-08-29" }).score,
   true);
 
+// ------------------------- a real filled form, as it really extracts
+//
+// Not an idealised version: the field names in this file are misspelled
+// ("Locaton", "Other Staf Atending") because the form's author let Acrobat
+// name the boxes from text that had already lost its ligatures.
+
+var FILLED_PDF = require("./fixtures-filled-dot-form.js");
+var real = M.formFields(FILLED_PDF);
+
+check("reads the cost center", real.costCenter, "30000");
+check("and the name beside it", real.name, "Matthew Miller");
+check("conference", real.event, "EDC-8 Midwest Peer Exchange");
+check("dates and times", real.confDates, "10/15/26 7:00 am to 5:00 pm");
+check("departure", real.departDate, "2026-10-14");
+check("return", real.returnDate, "2026-10-15");
+check("a venue address becomes the destination", real.location, "St. Louis, MO");
+check("everyone else on the trip", real.otherStaff,
+  "Cedric Wilkinson, Brian Worrel, Tony Gustafson, Chris Pelton, Deanne Popp");
+check("mileage", real.cTravelMode, 770);
+check("parking", real.cParking, 40);
+check("lodging nights", real.cLodgingNights, 1);
+check("rate per night, past the colon the form prints", real.cLodgingRate, 176.9);
+check("the third party, with no heading to scope it", real.tp1Name, "FHWA");
+check("a zero fee is not carried forward", real.cRegistration, undefined);
+check("\"N/A\" is not a reimbursement figure", real.tp1Max, undefined);
+
+check("misspelt labels still resolve", M.looseMatch("Locaton", "Location"), true);
+check("and badly misspelt ones", M.looseMatch("Other Staf Atending", "Other Staff Attending"), true);
+check("a trailing parenthetical is ignored",
+  M.looseMatch("Cost of Travel Mode miles, estmated fight cost", "Cost of Travel Mode"), true);
+check("but a different field is not adopted",
+  M.looseMatch("Return Date", "Departure Date"), false);
+check("nor a label that merely starts the same way",
+  M.looseMatch("Name", "Name of Conference"), false);
+
+// The three Acrobat left unnamed are exactly what the mapping feature is for.
+var stillNew = M.discoverLabels(FILLED_PDF).filter(function (x) { return !x.known; })
+  .map(function (x) { return x.label; });
+check("Acrobat's auto-named boxes are offered for mapping",
+  stillNew.indexOf("Text9") >= 0 && stillNew.indexOf("Check Box2") >= 0, true);
+check("labels that already work are NOT offered",
+  stillNew.indexOf("Locaton") < 0 && stillNew.indexOf("Other Staf Atending") < 0, true);
+
+var mapped = M.formFields(FILLED_PDF,
+  { "Text9": "reason", "Check Box2": "modeState", "Check Box5": "tp1Lodging" });
+check("mapping them fills the rest", /Connected Corridors/.test(mapped.reason || ""), true);
+check("and the tick boxes", mapped.modeState, true);
+check("including the third party's", mapped.tp1Lodging, true);
+
 if (failures) {
   console.error("\n" + failures + " mail-parsing test(s) failed.");
   process.exit(1);

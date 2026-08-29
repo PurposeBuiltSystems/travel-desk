@@ -399,6 +399,46 @@
     return out;
   }
 
+  /**
+   * Objects hidden inside object streams.
+   *
+   * From PDF 1.5 a file may pack most of its objects into compressed /ObjStm
+   * streams, and a great many do - including the filled Iowa DOT form, which
+   * contains the string "/Widget" exactly zero times in its raw bytes because
+   * every field object is inside one. Scanning the file for "N 0 obj" then
+   * finds the six container streams and none of the 137 objects in them, so
+   * the form reads as having no fields at all rather than as failing.
+   *
+   * The layout is fixed: /N pairs of "objectNumber byteOffset" up to /First,
+   * then the objects themselves. Streams cannot be nested inside one, so the
+   * expanded objects are dictionaries only.
+   */
+  async function expandObjectStreams(objs, streamOf) {
+    var nums = Object.keys(objs), added = 0;
+    for (var i = 0; i < nums.length; i++) {
+      var o = objs[nums[i]];
+      if (!o || !/\/Type\s*\/ObjStm/.test(o.dict)) { continue; }
+      var data = await streamOf(nums[i]);
+      if (!data) { continue; }
+      var nm = /\/N\s+(\d+)/.exec(o.dict), fm = /\/First\s+(\d+)/.exec(o.dict);
+      if (!nm || !fm) { continue; }
+      var n = parseInt(nm[1], 10), first = parseInt(fm[1], 10);
+      var toks = data.slice(0, first).trim().split(/\s+/);
+      for (var k = 0; k < n; k++) {
+        var num = toks[2 * k], off = parseInt(toks[2 * k + 1], 10);
+        if (num === undefined || isNaN(off)) { continue; }
+        var end = (k + 1 < n && toks[2 * k + 3] !== undefined)
+          ? first + parseInt(toks[2 * k + 3], 10) : data.length;
+        var body = data.slice(first + off, end);
+        if (!objs[num]) {
+          objs[num] = { dict: body, streamStart: -1, streamEnd: -1 };
+          added++;
+        }
+      }
+    }
+    return added;
+  }
+
   /** `12 0 obj … endobj` → { 12: {dict, streamStart, streamEnd} } */
   function parseObjects(raw) {
     var objs = {}, rx = /(\d+)\s+\d+\s+obj\b/g, m;
@@ -446,6 +486,10 @@
       var inf = await inflate(u8);
       return inf ? latin1(inf) : null;
     }
+
+    // Must happen before anything reads the object map: on a PDF 1.5+ file
+    // most of the objects are not visible until this runs.
+    try { await expandObjectStreams(objs, streamOf); } catch (e) { /* keep what we have */ }
 
     /** "/Resources 7 0 R" and "/Resources <<…>>" both have to work. */
     function deref(dict, key) {

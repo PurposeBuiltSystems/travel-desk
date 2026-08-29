@@ -2108,22 +2108,35 @@
     try {
       setStatus("work", 'Opening \u201c' + ref.name + '\u201d\u2026');
       var token = await GraphData.getToken();
-      var tables = await GraphData.listTables(token, ref);
-      if (!tables.length) {
-        setStatus("error", '\u201c' + ref.name + '\u201d has no Excel Table. In Excel: select the planner\u2019s header row and data, Insert > Table, then pick it again.');
+      var res = await ensurePlannerTable(token, ref);
+      if (!res.name) {
+        wbRef = ref;
+        byId("wbUrl").value = ref.webUrl || "";
+        await offerTableConversion(token, ref);
+        setStatus("error", "\u201c" + ref.name + "\u201d has no Excel table" +
+          (res.reason === "empty"
+            ? ", and no sheet in it has a header row yet. Add your column headings first."
+            : ", and more than one sheet has data \u2014 pick the planner\u2019s sheet below.") +
+          " Then click \u201cMake this sheet a table\u201d.");
         return;
       }
       wbRef = ref;
       byId("wbUrl").value = ref.webUrl || "";
+      var box2 = byId("noTableBox");
+      if (box2) { box2.hidden = true; }
       var sel = byId("tableName");
       sel.innerHTML = "";
-      tables.forEach(function (t) {
+      (res.tables || [res.name]).forEach(function (t) {
         var opt = document.createElement("option");
         opt.value = opt.textContent = t;
         sel.appendChild(opt);
       });
-      saveSettings({ wbUrl: ref.webUrl || "", tableName: tables[0], wbRef: ref });
-      setStatus("info", "Connected: " + ref.name + " \u2014 table \u201c" + tables[0] + "\u201d. Set its fiscal year above and click Save planner.");
+      saveSettings({ wbUrl: ref.webUrl || "", tableName: res.name, wbRef: ref });
+      setStatus("info", "Connected: " + ref.name + (res.created
+        ? " \u2014 it had no table, so \u201c" + res.sheet + "\u201d (" + res.address +
+          ") is now the table \u201c" + res.name + "\u201d, with every existing row intact."
+        : " \u2014 table \u201c" + res.name + "\u201d") +
+        ". Set its fiscal year above and click Save planner.");
     } catch (e) {
       setStatus("error", "Couldn't open that workbook: " + ((e && e.message) || e));
     }
@@ -2152,6 +2165,48 @@
    * and gains filters, an auto-expanding range, and something Power BI and
    * this add-in can both bind to.
    */
+  /**
+   * A planner workbook is useless without a table, so make one.
+   *
+   * Travel Desk writes rows through an Excel table. When "Create my planner"
+   * failed at the tables/add step the file was left with headers and no
+   * table, and nothing ever retried: every later submit failed at the row,
+   * the coordinator view read zero, and the only clue was a collapsed box in
+   * Setup asking the person to convert a sheet they did not know was
+   * unconverted. Connecting now repairs that instead of reporting it.
+   *
+   * It only acts when the answer is unambiguous - one sheet with data, or a
+   * sheet actually called Planner. A workbook with several populated sheets
+   * is somebody else's spreadsheet, and guessing which one to restructure
+   * would be worse than asking.
+   */
+  async function ensurePlannerTable(token, ref) {
+    var tables = await GraphData.listTables(token, ref);
+    if (tables.length) { return { name: tables[0], created: false, tables: tables }; }
+
+    var sheets = await GraphData.listWorksheets(token, ref);
+    var withData = [];
+    for (var i = 0; i < sheets.length; i++) {
+      try {
+        var used = await GraphData.usedRange(token, ref, sheets[i]);
+        if (used && used.address && (used.columnCount || 0) > 1) {
+          withData.push({ sheet: sheets[i], address: used.address, rows: used.rowCount || 0 });
+        }
+      } catch (e) { /* an empty sheet has no used range; that is not an error */ }
+    }
+    if (!withData.length) { return { name: "", created: false, reason: "empty", sheets: sheets }; }
+
+    var named = withData.filter(function (w) { return /^planner$/i.test(w.sheet); });
+    var pick = named.length === 1 ? named[0] : (withData.length === 1 ? withData[0] : null);
+    if (!pick) { return { name: "", created: false, reason: "ambiguous", sheets: sheets }; }
+
+    var t = await GraphData.addTable(token, ref, pick.address, "TravelPlanner");
+    return {
+      name: (t && t.name) || "TravelPlanner", created: true,
+      sheet: pick.sheet, address: pick.address,
+    };
+  }
+
   async function makeTable() {
     var sheet = val("tableSheet");
     if (!wbRef) { setStatus("error", "Connect the workbook first."); return; }
@@ -2222,7 +2277,13 @@
             var t2 = await GraphData.addTable(token, wbRef, used.address, "TravelPlanner");
             tableName = (t2 && t2.name) || "TravelPlanner";
           }
-        } catch (e2) { /* fall through to the guidance below */ }
+        } catch (e2) {
+          // Last resort before giving up: the same repair a Connect does.
+          try {
+            var res3 = await ensurePlannerTable(token, wbRef);
+            if (res3.name) { tableName = res3.name; }
+          } catch (e3) { /* fall through to the guidance below */ }
+        }
         if (!tableName) {
           // Keep the workbook connected so one click finishes the job.
           setVal("wbUrl", made.webUrl || "");
@@ -2266,24 +2327,31 @@
       setStatus("work", "Connecting to the planner workbook…");
       var token = await GraphData.getToken();
       wbRef = await GraphData.resolveWorkbook(token, url);
-      var tables = await GraphData.listTables(token, wbRef);
-      if (!tables.length) {
+      var res = await ensurePlannerTable(token, wbRef);
+      if (!res.name) {
         await offerTableConversion(token, wbRef);
-        setStatus("error", "\"" + wbRef.name + "\" has no Excel table yet — pick the sheet below and " +
-          "click \u201cMake this sheet a table\u201d.");
+        setStatus("error", "\u201c" + wbRef.name + "\u201d has no Excel table" +
+          (res.reason === "empty"
+            ? ", and no sheet in it has a header row yet. Add your column headings first."
+            : ", and it has more than one sheet with data \u2014 pick the planner\u2019s sheet below.") +
+          " Then click \u201cMake this sheet a table\u201d.");
         return;
       }
       var box = byId("noTableBox");
       if (box) { box.hidden = true; }
       var sel = byId("tableName");
       sel.innerHTML = "";
-      tables.forEach(function (t) {
+      (res.tables || [res.name]).forEach(function (t) {
         var opt = document.createElement("option");
         opt.value = opt.textContent = t;
         sel.appendChild(opt);
       });
-      saveSettings({ wbUrl: url, tableName: tables[0], wbRef: wbRef });
-      setStatus("info", "Connected: " + wbRef.name + " — table \"" + tables[0] + "\". You're set.");
+      saveSettings({ wbUrl: url, tableName: res.name, wbRef: wbRef });
+      setStatus("info", res.created
+        ? "Connected: " + wbRef.name + " \u2014 it had no table, so \u201c" + res.sheet +
+          "\u201d (" + res.address + ") is now the table \u201c" + res.name +
+          "\u201d. Every row that was there is still there. You're set."
+        : "Connected: " + wbRef.name + " \u2014 table \u201c" + res.name + "\u201d. You're set.");
       sel.addEventListener("change", function () { saveSettings({ tableName: sel.value }); });
     } catch (e) {
       setStatus("error", "Couldn't open the workbook: " + ((e && e.message) || e));

@@ -252,6 +252,11 @@
     step("the planner list", renderPlannerList);
     step("the planner link", renderPlannerLink);
     step("the build indicator", renderVersion);
+    // Only when it has never verified: this must not become a Graph call on
+    // every single open.
+    if (s.wbRef && s.plannerWriteOk !== true) {
+      step("the planner access check", function () { verifyPlannerAccess(s.wbRef, "traveler"); });
+    }
     // Diagnostic only: never awaited, never blocks startup, and swallows its
     // own failure inside checkPlannerColumns().
     if (s.wbRef && s.tableName) { checkPlannerColumns(); }
@@ -379,6 +384,14 @@
         ? "You're set up — the planner and your coordinator's settings all came across. " +
           "Fill in the form below and click Create travel request."
         : (patch.wbUrl ? "Setup applied — click Connect workbook once to finish." : "Setup applied."));
+      // Not awaited: setup is finished either way, and this only ever speaks
+      // up to say the rows will not land.
+      var firstRef = null;
+      Object.keys(patch.planners || {}).some(function (k) {
+        if (patch.planners[k] && patch.planners[k].wbRef) { firstRef = patch.planners[k].wbRef; return true; }
+        return false;
+      });
+      if (firstRef) { verifyPlannerAccess(firstRef, "traveler"); }
     } catch (e) {
       setStatus("error", "That doesn't look like a valid profile code.");
     }
@@ -481,6 +494,7 @@
     saveSettings({ planners: pl });
     renderPlannerList();
     checkPlannerColumns();          // a just-connected planner may predate the lifecycle
+    verifyPlannerAccess(pl[key].wbRef, "coordinator");
     setStatus("info", (key === "*" ? "Saved as the catch-all planner." :
       "Saved as the " + key + " planner \u2014 trips dated in " + key + " will go there automatically."));
   }
@@ -2205,6 +2219,41 @@
       name: (t && t.name) || "TravelPlanner", created: true,
       sheet: pick.sheet, address: pick.address,
     };
+  }
+
+  /**
+   * Tell someone at SETUP time whether their rows will actually land.
+   *
+   * Never blocks and never nags: it runs after a planner is configured, and
+   * only says anything when the answer is bad. A traveler who cannot write
+   * has one thing to do - ask their coordinator - and no way to discover it
+   * on their own, because everything else about the add-in works fine for
+   * them right up until the row silently does not appear.
+   */
+  async function verifyPlannerAccess(ref, who) {
+    if (!ref || !ref.driveId || !ref.itemId) { return; }
+    try {
+      var token = await GraphData.getToken();
+      var res = await GraphData.canWriteWorkbook(token, ref);
+      if (res.ok) {
+        if (!res.unverified) { saveSettings({ plannerWriteOk: true }); }
+        return;
+      }
+      saveSettings({ plannerWriteOk: false });
+      if (res.reason === "missing") {
+        setStatus("error", "The planner workbook isn't there any more \u2014 it has been moved, " +
+          "renamed or deleted. " + (who === "coordinator"
+            ? "Connect the current one in Setup."
+            : "Ask your travel coordinator for a new setup code."));
+        return;
+      }
+      setStatus("error", who === "coordinator"
+        ? "You can open the planner but not write to it. Travel Desk adds each trip as a row, " +
+          "so requests will fail at the row step. Give yourself edit access to the workbook."
+        : "You can see the planner but not write to it, so your trips won't reach the shared " +
+          "spreadsheet. Ask your travel coordinator to give you edit access \u2014 everything " +
+          "else here works in the meantime, and your requests are kept locally.");
+    } catch (e) { /* a probe that fails proves nothing; say nothing */ }
   }
 
   async function makeTable() {

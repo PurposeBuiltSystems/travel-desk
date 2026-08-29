@@ -152,10 +152,12 @@
     }
   }
 
-  async function graphJson(token, method, path, body) {
+  async function graphJson(token, method, path, body, extraHeaders) {
+    var headers = { Authorization: "Bearer " + token, "Content-Type": "application/json" };
+    Object.keys(extraHeaders || {}).forEach(function (k) { headers[k] = extraHeaders[k]; });
     var res = await fetchRetry(GRAPH + path, {
       method: method,
-      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      headers: headers,
       body: body ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) { throw new Error("Graph " + method + " " + path.split("?")[0] + " -> " + res.status + " " + (await res.text())); }
@@ -319,6 +321,45 @@
    * anyway: one call returns the whole body, and attachment bytes come back
    * base64 without the four-format dance getAttachmentContentAsync requires.
    */
+  /**
+   * Can this person actually write to the planner?
+   *
+   * Every traveler adds their own row with their own token, so read-only
+   * access to the shared workbook does not fail at setup - it fails weeks
+   * later, at the moment they file, and only for them. Their trip is still
+   * recorded locally, so nothing looks broken to them; the row is simply
+   * absent from the shared file, and the coordinator sees a number that is
+   * quietly too low. That is the worst shape a problem can have.
+   *
+   * The probe is a persistent workbook session: it requires write access and
+   * changes nothing. Creating a row and deleting it again would also answer
+   * the question, and would leave a stray row behind on any failure between
+   * the two.
+   */
+  async function canWriteWorkbook(token, ref) {
+    try {
+      var s = await graphJson(token, "POST", wbBase(ref) + "/createSession",
+        { persistChanges: true });
+      var id = s && s.id;
+      if (id) {
+        // Sessions expire on their own, but leaving one open holds the
+        // workbook against the next writer for no reason.
+        try {
+          await graphJson(token, "POST", wbBase(ref) + "/closeSession", null,
+            { "workbook-session-id": id });
+        } catch (e) { /* it will time out by itself */ }
+      }
+      return { ok: true };
+    } catch (e) {
+      var msg = (e && e.message) || String(e);
+      if (/-> 40[13]\b/.test(msg)) { return { ok: false, reason: "denied" }; }
+      if (/-> 404\b/.test(msg)) { return { ok: false, reason: "missing" }; }
+      // Anything else - offline, throttled, a Graph hiccup - is not evidence
+      // that the person cannot write, and must not be reported as if it were.
+      return { ok: true, unverified: true, reason: msg };
+    }
+  }
+
   async function messageFull(token, id) {
     var m = await graphJson(token, "GET", "/me/messages/" + encodeURIComponent(id) +
       "?$select=id,subject,body,bodyPreview,from,receivedDateTime,webLink,hasAttachments");
@@ -526,6 +567,7 @@
     setupInvites: setupInvites,
     messageBody: messageBody,
     bookingEmails: bookingEmails,
+    canWriteWorkbook: canWriteWorkbook,
     messageFull: messageFull,
     messageAttachments: messageAttachments,
     _config: { clientId: CLIENT_ID },

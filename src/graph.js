@@ -311,6 +311,60 @@
   }
 
   /** Replace one existing row (0-based index within the data body). */
+  /**
+   * A message the user is NOT looking at.
+   *
+   * Office.js only ever exposes the open item, so anything found by searching
+   * the mailbox has to be read through Graph instead. It is the better route
+   * anyway: one call returns the whole body, and attachment bytes come back
+   * base64 without the four-format dance getAttachmentContentAsync requires.
+   */
+  async function messageFull(token, id) {
+    var m = await graphJson(token, "GET", "/me/messages/" + encodeURIComponent(id) +
+      "?$select=id,subject,body,bodyPreview,from,receivedDateTime,webLink,hasAttachments");
+    return {
+      id: m.id, subject: m.subject || "",
+      body: ((m.body || {}).content) || m.bodyPreview || "",
+      contentType: ((m.body || {}).contentType) || "text",
+      receivedDateTime: m.receivedDateTime, webLink: m.webLink,
+      hasAttachments: !!m.hasAttachments,
+      from: (((m.from || {}).emailAddress || {}).address || ""),
+    };
+  }
+
+  var ATT_MAX = 12 * 1024 * 1024;
+
+  /**
+   * Attachment bytes, fetched one at a time on purpose.
+   *
+   * Asking for contentBytes across the whole collection pulls every embedded
+   * signature logo and any 30 MB deck in the same response, which is slow and
+   * occasionally fatal. The list comes back as metadata, gets filtered down to
+   * things worth reading, and only those are fetched.
+   */
+  async function messageAttachments(token, id) {
+    var res = await graphJson(token, "GET", "/me/messages/" + encodeURIComponent(id) +
+      "/attachments?$select=id,name,contentType,size,isInline&$top=25");
+    var wanted = (res.value || []).filter(function (a) {
+      return a && !a.isInline && a.name && (a.size || 0) <= ATT_MAX;
+    });
+    var out = [];
+    for (var i = 0; i < wanted.length; i++) {
+      try {
+        var full = await graphJson(token, "GET", "/me/messages/" + encodeURIComponent(id) +
+          "/attachments/" + encodeURIComponent(wanted[i].id));
+        if (full && full.contentBytes) {
+          out.push({ name: wanted[i].name, contentBytes: full.contentBytes });
+        } else {
+          out.push({ name: wanted[i].name, note: "stored in the cloud, not attached" });
+        }
+      } catch (e) {
+        out.push({ name: wanted[i].name, note: "couldn't be downloaded" });
+      }
+    }
+    return out;
+  }
+
   async function updateTableRow(token, ref, tableName, index, values) {
     return graphJson(token, "PATCH",
       wbBase(ref) + "/tables/" + encodeURIComponent(tableName) +
@@ -472,6 +526,8 @@
     setupInvites: setupInvites,
     messageBody: messageBody,
     bookingEmails: bookingEmails,
+    messageFull: messageFull,
+    messageAttachments: messageAttachments,
     _config: { clientId: CLIENT_ID },
   };
 })(typeof self !== "undefined" ? self : this);

@@ -640,6 +640,79 @@ check("every mappable target is a real field id",
   M.MAPPABLE.every(function (m) { return /^[A-Za-z_][A-Za-z0-9]*$/.test(m.field) && m.text; }),
   true);
 
+// ------------------------------------ finding travel in a real-ish inbox
+//
+// The mailbox is overwhelmingly not travel, so the cost of being generous is
+// a list a person has to read and reject. These are the shapes that actually
+// sit in one.
+
+var INBOX = [
+  { id: "1", subject: "Fw: EDC-8 Midwest Peer Exchange Registration Confirmation",
+    bodyPreview: "Thank you for registering. Date: October 15, 2026. Hyatt Regency St. Louis at the Arch. $150 per night.",
+    from: "notify@eventleaf.com", receivedDateTime: "2026-08-20T10:00:00Z", hasAttachments: true },
+  { id: "2", subject: "Your Roblox One-Time Code", bodyPreview: "Use this one-time code to sign in.",
+    from: "no-reply@roblox.com", receivedDateTime: "2026-08-15T10:00:00Z" },
+  { id: "3", subject: "AASHTO Spring Meeting - agenda now available",
+    bodyPreview: "Join us May 4-6, 2027 in Nashville, TN. Room block at the Omni.",
+    from: "events@aashto.org", receivedDateTime: "2026-08-10T10:00:00Z" },
+  { id: "4", subject: "Call for Papers: TRB Annual Meeting",
+    bodyPreview: "Submit your abstract by September 1, 2026.",
+    from: "papers@trb.org", receivedDateTime: "2026-08-05T10:00:00Z" },
+  { id: "5", subject: "Lottery Jackpot Fetching", bodyPreview: "You could win big today!",
+    from: "promo@luckinnumbers.com", receivedDateTime: "2026-08-16T10:00:00Z" },
+  { id: "6", subject: "Concur: Your trip to Washington",
+    bodyPreview: "Flight confirmed. Depart March 3, 2027.",
+    from: "noreply@concursolutions.com", receivedDateTime: "2026-08-12T10:00:00Z" },
+  { id: "7", subject: "Monthly newsletter from the Transportation Institute",
+    bodyPreview: "This month: research highlights and a webinar.",
+    from: "news@example.org", receivedDateTime: "2026-08-18T10:00:00Z" },
+  { id: "8", subject: "Save the date: 2028 Bridge Conference",
+    bodyPreview: "More details to follow.", from: "info@bridges.example.org",
+    receivedDateTime: "2026-08-19T10:00:00Z" },
+];
+
+var OPTS = { todayIso: "2026-08-29", homeCity: "Ames" };
+var hits = M.findTravelEmails(INBOX, OPTS);
+function has(id) { return hits.some(function (h) { return h.id === id; }); }
+
+check("the real confirmation is found", has("1"), true);
+check("a conference with dates and a room block is found", has("3"), true);
+check("a booking system's trip email is found", has("6"), true);
+check("a one-time passcode is not travel", has("2"), false);
+check("a call for papers is not a trip", has("4"), false);
+check("spam is not travel", has("5"), false);
+check("a newsletter is not travel", has("7"), false);
+check("save-the-date is not something to file yet", has("8"), false);
+check("the strongest match sorts first", hits[0].id, "1");
+
+check("a trip already filed is marked, not hidden",
+  M.findTravelEmails(INBOX, { todayIso: "2026-08-29",
+    filed: [{ event: "EDC-8 Midwest Peer Exchange" }] })
+    .filter(function (h) { return h.id === "1"; })[0].alreadyFiled, true);
+check("and one that is not filed is not marked",
+  hits.filter(function (h) { return h.id === "3"; })[0].alreadyFiled, false);
+
+check("every hit says why it is there", hits.every(function (h) { return h.why.length > 0; }), true);
+check("the event name is pulled out for the list",
+  hits.filter(function (h) { return h.id === "1"; })[0].event,
+  "EDC-8 Midwest Peer Exchange");
+
+// An organisation's own booking system is configured, not guessed.
+check("an org's own booking sender lifts a plain subject",
+  M.scoreTravelEmail({ subject: "Your reservation", bodyPreview: "Confirmed for October 6-8, 2026.",
+                       from: "noreply@fleetio.example.gov" },
+    { todayIso: "2026-08-29", trustedSenders: ["fleetio.example.gov"] }).score >
+  M.scoreTravelEmail({ subject: "Your reservation", bodyPreview: "Confirmed for October 6-8, 2026.",
+                       from: "noreply@fleetio.example.gov" }, { todayIso: "2026-08-29" }).score,
+  true);
+
+check("an event that has already happened scores lower than one ahead",
+  M.scoreTravelEmail({ subject: "Registration confirmation", bodyPreview: "Held June 2, 2025 in Omaha, NE.",
+                       from: "x@example.org" }, { todayIso: "2026-08-29" }).score <
+  M.scoreTravelEmail({ subject: "Registration confirmation", bodyPreview: "Held June 2, 2027 in Omaha, NE.",
+                       from: "x@example.org" }, { todayIso: "2026-08-29" }).score,
+  true);
+
 if (failures) {
   console.error("\n" + failures + " mail-parsing test(s) failed.");
   process.exit(1);

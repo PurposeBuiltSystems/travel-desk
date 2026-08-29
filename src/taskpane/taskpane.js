@@ -264,6 +264,7 @@
     });
     on("submit", "click", submit);
     on("fillFromEmail", "click", fillFromEmail);
+    on("findTravel", "click", findTravelEmails);
     on("learnScan", "click", learnScan);
     on("learnSave", "click", learnSave);
     on("learnClear", "click", learnClear);
@@ -1057,6 +1058,148 @@
       wrap.appendChild(b);
     });
     box.appendChild(wrap);
+  }
+
+  // ------------------------------------- find travel emails in the mailbox
+
+  var TRAVEL_LOOKBACK_DAYS = 180;
+
+  /**
+   * Search the mailbox rather than only reading what is open.
+   *
+   * "Fill from this email" assumes you already found the confirmation. Half
+   * the time the trip you are filing for is three weeks down the inbox, and
+   * hunting for it is the part nobody wants to do.
+   */
+  async function findTravelEmails() {
+    if (typeof TdMail === "undefined") {
+      setStatus("error", "This pane is a cached older version \u2014 close it, reopen it, " +
+        "and check the build number at the top.");
+      return;
+    }
+    var btn = byId("findTravel");
+    if (btn) { btn.disabled = true; }
+    setStatus("work", "Looking through your inbox\u2026");
+    try {
+      var token = await GraphData.getToken();
+      var since = new Date(Date.now() - TRAVEL_LOOKBACK_DAYS * 864e5).toISOString();
+      var msgs = await GraphData.bookingEmails(token, since);
+      var s = settings();
+      var hits = TdMail.findTravelEmails(msgs, {
+        todayIso: new Date().toISOString(),
+        homeCity: s.homeCity || "",
+        trustedSenders: (val("bookingSenders") || "").split(","),
+        filed: trips(),
+      });
+      renderTravelFinds(hits, msgs.length);
+    } catch (e) {
+      setStatus("error", "Couldn't search your inbox: " + ((e && e.message) || e));
+    } finally {
+      if (btn) { btn.disabled = false; }
+    }
+  }
+
+  function renderTravelFinds(hits, scanned) {
+    var box = byId("travelFinds");
+    if (!box) { return; }
+    box.hidden = false;
+    box.innerHTML = "";
+
+    var head = document.createElement("p");
+    head.className = "f-head";
+    head.textContent = hits.length
+      ? hits.length + " look like travel, out of " + scanned + " messages"
+      : "Nothing in the last " + TRAVEL_LOOKBACK_DAYS + " days looks like a trip";
+    box.appendChild(head);
+
+    if (!hits.length) {
+      var p = document.createElement("p");
+      p.className = "f-note";
+      p.textContent = "Open the confirmation yourself and use \u201cFill from this email\u201d \u2014 " +
+        "that reads whatever you are looking at, whether or not this recognises it.";
+      box.appendChild(p);
+      setStatus("info", "No travel emails found in the last " + TRAVEL_LOOKBACK_DAYS + " days.");
+      return;
+    }
+
+    var ul = document.createElement("ul");
+    ul.className = "learn-list";
+    hits.slice(0, 25).forEach(function (h) {
+      var li = document.createElement("li");
+      var t = document.createElement("span");
+      t.className = "f-name";
+      t.textContent = h.subject;
+      if (h.alreadyFiled) {
+        var tag = document.createElement("span");
+        tag.className = "learn-new";
+        tag.textContent = "already filed";
+        t.appendChild(tag);
+      }
+      var meta = document.createElement("span");
+      meta.className = "f-src";
+      meta.textContent = (h.receivedDateTime ? h.receivedDateTime.slice(0, 10) + " \u00b7 " : "") +
+        h.from + " \u00b7 " + h.why.slice(0, 2).join(", ");
+      var use = document.createElement("button");
+      use.type = "button";
+      use.className = "chip-del";
+      use.textContent = "Use this";
+      use.addEventListener("click", function () { useTravelEmail(h); });
+      li.appendChild(t); li.appendChild(meta); li.appendChild(use);
+      ul.appendChild(li);
+    });
+    box.appendChild(ul);
+    setStatus("info", "Pick one and it fills the form the same way the open message would. " +
+      "Ones you have already filed are marked, not hidden \u2014 they are the ones worth copying.");
+  }
+
+  /** Read a message the user is not looking at, then prefill from it. */
+  async function useTravelEmail(hit) {
+    setStatus("work", "Reading \u201c" + hit.subject + "\u201d\u2026");
+    try {
+      var token = await GraphData.getToken();
+      var msg = await GraphData.messageFull(token, hit.id);
+      var scanned = [], skipped = [];
+      if (msg.hasAttachments) {
+        setStatus("work", "Reading its attachments\u2026");
+        var atts = await GraphData.messageAttachments(token, hit.id);
+        for (var i = 0; i < atts.length; i++) {
+          var a = atts[i];
+          if (!a.contentBytes) { skipped.push(a.name + (a.note ? " \u2014 " + a.note : "")); continue; }
+          try {
+            var out = await TdAttach.attachmentText(a.name, TdAttach.b64ToBytes(a.contentBytes));
+            if (out.text) { scanned.push({ name: a.name, text: out.text }); }
+            else { skipped.push(a.name + (out.note ? " \u2014 " + out.note : "")); }
+          } catch (e) { skipped.push(a.name + " \u2014 couldn't be read"); }
+        }
+      }
+
+      var s = settings();
+      var me = "";
+      try { me = (Office.context.mailbox.userProfile || {}).displayName || ""; } catch (e) { me = ""; }
+      var myDomain = "";
+      try {
+        var addr = (Office.context.mailbox.userProfile || {}).emailAddress || "";
+        myDomain = (addr.split("@")[1] || "").toLowerCase();
+      } catch (e) { myDomain = ""; }
+
+      var pre = TdMail.buildPrefill({
+        subject: msg.subject, body: msg.body,
+        receivedIso: msg.receivedDateTime,
+        homeCity: s.homeCity || "", myName: s.name || me, myDomain: myDomain,
+        formLabels: s.formLabels || null,
+        attachments: scanned,
+      });
+      if (s.name || me) {
+        pre.fields.name = s.name || me;
+        pre.sources.name = s.name ? "your settings" : "your Outlook profile";
+      }
+      ["costCenter", "division", "bureau"].forEach(function (k) {
+        if (s[k]) { pre.fields[k] = s[k]; pre.sources[k] = "your settings"; }
+      });
+      applyPrefill(pre, scanned, skipped);
+    } catch (e) {
+      setStatus("error", "Couldn't read that message: " + ((e && e.message) || e));
+    }
   }
 
   // -------------------------------------------- teach it your own form

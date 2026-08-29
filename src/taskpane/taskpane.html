@@ -13,7 +13,7 @@
   <!-- JSZip: packages the generated planner workbook client-side -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-  <link rel="stylesheet" href="taskpane.css?v=47" />
+  <link rel="stylesheet" href="taskpane.css?v=48" />
 </head>
 <body>
   <header class="app-head">
@@ -208,6 +208,8 @@
       and its attachments — agenda, invitation letter, calendar invite, cost sheet —
       and fills in what it can find.
       <button id="fillFromEmail" class="primary" style="width:100%">📥 Fill from this email</button>
+      <button id="findTravel" style="width:100%;margin-top:6px">🔎 Or search my inbox for travel emails</button>
+      <div id="travelFinds" class="fillreport" hidden></div>
       <label class="modes" style="margin-top:6px"><input id="fillOverwrite" type="checkbox" /> Replace what I've already typed</label>
       <div id="fillReport" class="fillreport" hidden></div>
     </div>
@@ -340,12 +342,12 @@
 
   <section id="status" class="status" hidden></section>
 
-  <script src="../mailparse.js?v=47"></script>
-  <script src="../attachtext.js?v=47"></script>
-  <script src="../form.js?v=47"></script>
-  <script src="../xlsxgen.js?v=47"></script>
-  <script src="../coord.js?v=47"></script>
-  <script src="../graph.js?v=47"></script>
-  <script src="taskpane.js?v=47"></script>
+  <script src="../mailparse.js?v=48"></script>
+  <script src="../attachtext.js?v=48"></script>
+  <script src="../form.js?v=48"></script>
+  <script src="../xlsxgen.js?v=48"></script>
+  <script src="../coord.js?v=48"></script>
+  <script src="../graph.js?v=48"></script>
+  <script src="taskpane.js?v=48"></script>
 </body>
 </html>

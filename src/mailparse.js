@@ -1580,6 +1580,97 @@
     };
   }
 
+  // ------------------------------------------------ finding travel in a mailbox
+
+  var TRAVEL_SENDERS = /(concur|concursolutions|eventleaf|cvent|eventbrite|regonline|whova|swoogo|hopin|marriott|hilton|hyatt|ihg|choicehotels|wyndham|bestwestern|delta|united|aa\.com|southwest|alaskaair|jetblue|amtrak|enterprise|hertz|avis|nationalcar|expedia|egencia|travelport|sabre|aashto|trb\.org|ite\.org|apwa|dot\.gov|fhwa)/i;
+
+  var STRONG_SUBJ = /(registration\s+(is\s+)?confirm|confirmation\s+of\s+registration|you'?re\s+registered|thank\s+you\s+for\s+registering|itinerar|booking\s+confirm|reservation\s+confirm|e-?ticket|travel\s+authorization|invitational\s+travel|trip\s+confirm)/i;
+
+  var WEAK_SUBJ = /(confirm|registration|registered|reservation|booking|invitation|invited|agenda|conference|summit|workshop|symposium|peer\s+exchange|annual\s+meeting|training|forum|convening)/i;
+
+  var NOT_TRAVEL = /(newsletter|webinar|virtual\s+only|unsubscribe\s+from|password|invoice\s+overdue|payment\s+failed|security\s+alert|verify\s+your\s+(email|account)|one-?time\s+(code|passcode)|survey|nomination|call\s+for\s+(papers|abstracts|presentations)|save\s+the\s+date)/i;
+
+  /**
+   * How likely is this message to be a trip somebody has to file paperwork for?
+   *
+   * The mailbox is mostly not travel, so this has to be sceptical: it runs
+   * over a few hundred messages and every false positive is a row the person
+   * reads and rejects. Only the subject line and Outlook's ~255-character
+   * preview are available at this stage - fetching every body to decide would
+   * be hundreds of calls - so the signals are deliberately coarse, and the
+   * reasons are returned so a person can see WHY a message is on the list
+   * rather than trusting a number.
+   */
+  function scoreTravelEmail(m, opts) {
+    var o = opts || {};
+    var subject = clean(m && m.subject || "");
+    var preview = clean(m && m.bodyPreview || "");
+    var from = String(m && m.from || "").toLowerCase();
+    var hay = subject + "\n" + preview;
+    var score = 0, why = [];
+
+    if (STRONG_SUBJ.test(subject)) { score += 55; why.push("the subject says it is a confirmation"); }
+    else if (WEAK_SUBJ.test(subject)) { score += 22; why.push("the subject mentions an event"); }
+
+    if (TRAVEL_SENDERS.test(from)) { score += 30; why.push("from a travel or conference system"); }
+    // The organisation's own booking systems, as configured in Setup.
+    (o.trustedSenders || []).forEach(function (d) {
+      var dom = String(d || "").trim().toLowerCase();
+      if (dom && from.indexOf(dom) >= 0) { score += 30; why.push("from " + dom); }
+    });
+
+    var dates = findDates(hay);
+    if (dates.length) {
+      var ahead = o.todayIso ? dates.filter(function (d) { return d.start >= o.todayIso.slice(0, 10); }) : dates;
+      if (ahead.length) { score += 20; why.push("mentions a date still ahead"); }
+      else { score -= 10; }
+    }
+    if (findLocation(hay, o.homeCity).value) { score += 14; why.push("names a destination"); }
+    if (/\$\s?[0-9]/.test(hay)) { score += 8; why.push("quotes a cost"); }
+    if (/\b(hotel|lodging|room\s+block|per\s+diem|airfare|flight|rental\s+car|shuttle)\b/i.test(hay)) {
+      score += 12; why.push("mentions lodging or transport");
+    }
+    if (m && m.hasAttachments) { score += 8; why.push("has attachments"); }
+
+    if (NOT_TRAVEL.test(hay)) { score -= 45; why.push("reads like a mailing, not a trip"); }
+    if (/^(re|fw|fwd)\s*:/i.test(subject) && !STRONG_SUBJ.test(subject)) { score -= 5; }
+
+    return { score: score, why: why };
+  }
+
+  /**
+   * The inbox, narrowed to what is worth showing.
+   *
+   * Trips already filed are not dropped - they are marked. Somebody looking
+   * for last year's conference to copy wants to see it, and silently hiding a
+   * message the person can see in Outlook makes the list look broken.
+   */
+  function findTravelEmails(messages, opts) {
+    var o = opts || {};
+    var known = {};
+    (o.filed || []).forEach(function (t) {
+      var k = norm(t && t.event || "");
+      if (k) { known[k] = true; }
+    });
+    var out = [];
+    (messages || []).forEach(function (m) {
+      var s = scoreTravelEmail(m, o);
+      if (s.score < (o.threshold == null ? 40 : o.threshold)) { return; }
+      var ev = eventFromSubject(m.subject || "");
+      out.push({
+        id: m.id, subject: m.subject || "", event: ev,
+        from: m.from || "", receivedDateTime: m.receivedDateTime || "",
+        webLink: m.webLink || "", score: s.score, why: s.why,
+        alreadyFiled: !!(ev && known[norm(ev)]),
+      });
+    });
+    out.sort(function (a, b) {
+      if (b.score !== a.score) { return b.score - a.score; }
+      return String(b.receivedDateTime).localeCompare(String(a.receivedDateTime));
+    });
+    return out;
+  }
+
   var api = {
     buildPrefill: buildPrefill,
     eventFromSubject: eventFromSubject,
@@ -1590,6 +1681,8 @@
     findRole: findRole,
     findSignature: findSignature,
     findCoordinator: findCoordinator,
+    scoreTravelEmail: scoreTravelEmail,
+    findTravelEmails: findTravelEmails,
     formFields: formFields,
     discoverLabels: discoverLabels,
     MAPPABLE: MAPPABLE,

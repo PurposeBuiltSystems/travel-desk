@@ -559,6 +559,9 @@
    * information, so they are dropped: a typical request loses two thirds of its
    * size and nothing a person would notice.
    */
+  // The only inputs the pane ships with value="0".
+  var ZERO_IS_BLANK = { mealsB: 1, mealsL: 1, mealsD: 1 };
+
   function slimModel(m) {
     if (!m || typeof m !== "object") { return {}; }
     var out = {};
@@ -575,9 +578,11 @@
         if (Object.keys(sub).length) { out[k] = sub; }
         return;
       }
-      // "0" is what an untouched number box holds, and carrying it forward
-      // would print a row of zero costs onto next year's authorization.
-      if (v === 0 || v === "0") { return; }
+      // Only the meal counts start life at 0 on a blank form; every other
+      // number box starts empty. So a zero elsewhere was typed, and a typed
+      // zero is an answer worth carrying - "$0 luggage" is a checked box, not
+      // an untouched one.
+      if ((v === 0 || v === "0") && ZERO_IS_BLANK[k]) { return; }
       out[k] = v;
     });
     return out;

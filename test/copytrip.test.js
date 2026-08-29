@@ -145,8 +145,11 @@ check("as are the conference dates", future.model.confDates, FILLED.confDates);
 
 /* Slimming is what makes forty of these fit; it must not keep noise. */
 check("empty boxes are dropped", TravelForm.slimModel({ a: "x", b: "", c: null }), { a: "x" });
-check("an untouched number box is not carried forward as a zero",
-  TravelForm.slimModel({ costs: { parking: "0", taxi: "40" } }), { costs: { taxi: "40" } });
+check("a typed zero cost is carried forward, because it is an answer",
+  TravelForm.slimModel({ costs: { parking: "0", taxi: "40" } }),
+  { costs: { parking: "0", taxi: "40" } });
+check("but an untouched meal count is not - that box ships showing 0",
+  TravelForm.slimModel({ costs: { mealsB: "0", mealsL: "2" } }), { costs: { mealsL: "2" } });
 check("an unticked box is dropped", TravelForm.slimModel({ modes: { air: false, state: true } }),
   { modes: { state: true } });
 check("a third party with no name is dropped",

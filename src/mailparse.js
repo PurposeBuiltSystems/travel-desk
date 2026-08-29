@@ -1343,8 +1343,17 @@
 
     Object.keys(out).forEach(function (k) {
       if (MONEY_FIELD.test(k)) {
-        var n = toNum(String(out[k]).replace(/^\$/, ""));
-        if (n) { out[k] = n; } else { delete out[k]; }
+        // A typed zero is an ANSWER: somebody checked, and there is no
+        // luggage fee. Treating it as an empty box left the authorization
+        // blank where the form said $0, which reads as "not considered"
+        // rather than "none". Only a value that is not a number at all -
+        // "N/A", "TBD" - is dropped.
+        var rawv = String(out[k]).trim();
+        if (/^\$?\s*-?[0-9][0-9,]*(?:\.[0-9]+)?/.test(rawv)) {
+          out[k] = toNum(rawv.replace(/^\$/, ""));
+        } else {
+          delete out[k];
+        }
       } else if (DATE_FIELD.test(k)) {
         var d = findDates(String(out[k]));
         if (d.length) { out[k] = d[0].start; } else { delete out[k]; }
@@ -1498,7 +1507,10 @@
 
     var fields = {}, sources = {}, alternates = {}, notes = [];
     function put(id, value, from) {
-      if (value === "" || value === 0 || value == null) { return; }
+      // 0 is allowed through: every caller that could produce a spurious zero
+      // (findAmount, findNights) already guards on it, and a zero read off a
+      // filled form is something the person entered on purpose.
+      if (value === "" || value == null) { return; }
       if (fields[id] != null) { return; }        // first (best) source wins
       fields[id] = value; sources[id] = from;
     }

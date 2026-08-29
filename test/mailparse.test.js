@@ -436,21 +436,35 @@ check("taxi", ff.cTaxi, 55);
 check("lodging nights", ff.cLodgingNights, 2);
 check("nightly rate", ff.cLodgingRate, 150);
 check("max reimbursement", ff.tp1Max, 900);
-check("a zero registration fee is not treated as a value", ff.cRegistration, undefined);
+check("a zero registration fee is a value, not an empty box", ff.cRegistration, 0);
 
 // A filled form must beat anything inferred from the covering email's prose.
 var pre6 = M.buildPrefill({
   subject: "Fw: Registration Confirmation",
   body: "Registration fee: $675.00. Event dates October 6-8, 2026 in Denver, CO.",
   receivedIso: "2026-08-23T12:20:00Z",
-  attachments: [{ name: "Travel Authorization Request.pdf", text: FILLED }],
+  // Registration is REMOVED from the form here: with a typed zero now
+  // counting as an answer, a form that says $0 would rightly beat the email,
+  // and the point of this test is what happens when the form is silent.
+  attachments: [{ name: "Travel Authorization Request.pdf",
+                  text: FILLED.replace(/Registration Fee: \$ 0\.00\s*/, "") }],
 });
 check("the filled form wins on location", pre6.fields.location, "St. Louis, MO");
 check("the filled form wins on dates", pre6.fields.departDate, "2026-10-14");
 check("and says the form is where it came from",
   /filled-in form/.test(pre6.sources.location), true);
-check("the email still supplies what the form left out",
+check("the email supplies what the form left blank",
   pre6.fields.cRegistration, 675);
+
+// And the other way round: a form that says zero is not "left blank".
+var pre7 = M.buildPrefill({
+  subject: "Fw: Registration Confirmation",
+  body: "Registration fee: $675.00.",
+  receivedIso: "2026-08-23T12:20:00Z",
+  attachments: [{ name: "Travel Authorization Request.pdf", text: FILLED }],
+});
+check("a form that says $0 overrules the email's figure", pre7.fields.cRegistration, 0);
+check("and says so", /filled-in form/.test(pre7.sources.cRegistration), true);
 
 // The form carries TWO third-party entities with identical labels. Reading
 // the second one's figures as the first misdirects a receivable.
@@ -736,7 +750,9 @@ check("parking", real.cParking, 40);
 check("lodging nights", real.cLodgingNights, 1);
 check("rate per night, past the colon the form prints", real.cLodgingRate, 176.9);
 check("the third party, with no heading to scope it", real.tp1Name, "FHWA");
-check("a zero fee is not carried forward", real.cRegistration, undefined);
+check("a zero fee IS carried forward - it was typed", real.cRegistration, 0);
+check("so is a zero luggage fee", real.cLuggage, 0);
+check("and a zero taxi fee", real.cTaxi, 0);
 check("\"N/A\" is not a reimbursement figure", real.tp1Max, undefined);
 
 check("misspelt labels still resolve", M.looseMatch("Locaton", "Location"), true);

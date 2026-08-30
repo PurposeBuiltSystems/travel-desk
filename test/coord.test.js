@@ -258,6 +258,56 @@ check("an empty mailbox is not an error", FF.newerInvite([], ""), null);
 check("a resend of the same settings is not a change",
   FF.profileStamp(CODE_A) === FF.profileStamp(CODE_A), true);
 
+// -------------------------------- the coordinator's three stages, in order
+//
+// The order was always real; it was just invisible. Lifted out of the pane so
+// the sequencing is checked without a browser.
+
+var PANE = require("fs").readFileSync(__dirname + "/../src/taskpane/taskpane.js", "utf8");
+function liftFn(name) {
+  var i = PANE.indexOf("function " + name + "(");
+  var d = 0;
+  for (var k = PANE.indexOf("{", i); k < PANE.length; k++) {
+    if (PANE[k] === "{") { d++; }
+    else if (PANE[k] === "}") { d--; if (!d) { return new Function("return " + PANE.slice(i, k + 1))(); } }
+  }
+  throw new Error("could not lift " + name);
+}
+var coordStages = liftFn("coordStages");
+
+function shape(st) {
+  return coordStages(st).map(function (x) {
+    return x.done ? "done" : (x.needs === false ? "lock" : "todo");
+  }).join(" ");
+}
+function nextUp(st) {
+  var n = coordStages(st).filter(function (x) { return !x.done && x.needs !== false; })[0];
+  return n ? n.key : null;
+}
+
+check("fresh install starts at the beginning", shape({}), "todo todo lock");
+check("and names the first thing", nextUp({}), "org");
+check("address given, planner next",
+  shape({ coordEmail: "k@x.gov" }), "done todo lock");
+check("a connected-but-unsaved planner is NOT done",
+  shape({ coordEmail: "k@x.gov", wbUrl: "https://x" }), "done todo lock");
+check("and says why", coordStages({ coordEmail: "k@x.gov", wbUrl: "https://x" })[1].why,
+  "Connected, but not saved yet \u2014 set its fiscal year and save it.");
+check("a saved planner unlocks inviting",
+  shape({ coordEmail: "k@x.gov", planners: { SFY27: { wbRef: {} } } }), "done done todo");
+check("inviting is the last thing",
+  nextUp({ coordEmail: "k@x.gov", planners: { SFY27: { wbRef: {} } } }), "invite");
+check("all three done", shape({ coordEmail: "k@x.gov", planners: { SFY27: { wbRef: {} } },
+  invitesSentAt: "2026-08-30" }), "done done done");
+check("nothing left to do", nextUp({ coordEmail: "k@x.gov",
+  planners: { SFY27: { wbRef: {} } }, invitesSentAt: "2026-08-30" }), null);
+
+// Inviting can never come first, however much else is configured.
+check("invite stays locked without an address",
+  shape({ planners: { SFY27: { wbRef: {} } } }), "todo done lock");
+check("a planner entry with no resolved reference does not count",
+  shape({ coordEmail: "k@x.gov", planners: { SFY27: { wbUrl: "https://x" } } }), "done todo lock");
+
 if (failures) {
   console.error("\n" + failures + " coordinator test(s) FAILED");
   process.exit(1);

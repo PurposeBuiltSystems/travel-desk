@@ -256,6 +256,7 @@
     // every single open.
     step("the setup freshness check", checkSetupFreshness);
     step("the stale-invitation notice", noteInvitesStale);
+    step("the setup checklist", renderCoordSteps);
     if (s.wbRef && s.plannerWriteOk !== true) {
       step("the planner access check", function () { verifyPlannerAccess(s.wbRef, "traveler"); });
     }
@@ -302,6 +303,7 @@
         saveSettings(patch);
         applyOrgLabels();
         noteInvitesStale();
+        renderCoordSteps();
       });
     });
     ["cTravelMode", "cLuggage", "cParking", "cTaxi", "cLodgingNights",
@@ -333,6 +335,39 @@
   });
 
   // ---------- org profile (share setup with the team) ----------
+
+  /**
+   * The coordinator's three stages, in the order they have to happen.
+   *
+   * The order was always real - you cannot invite people to a planner you
+   * have not saved, and a profile without your address reaches nobody - but
+   * it was invisible, spread across two levels of collapsed sections with no
+   * indication of how far through you were or what was left. Every one of
+   * these steps existed already; this only says which one is next.
+   *
+   * Pure, so the sequencing can be tested without a DOM.
+   */
+  function coordStages(st) {
+    var s = st || {};
+    var savedPlanner = !!(s.planners && Object.keys(s.planners).some(function (k) {
+      return s.planners[k] && s.planners[k].wbRef;
+    }));
+    var org = !!String(s.coordEmail || "").trim();
+    var invited = !!s.invitesSentAt;
+    return [
+      { key: "org", name: "Say who you are",
+        why: "Your travel coordinator's address \u2014 where every request is sent.",
+        done: org, action: "coordEmail" },
+      { key: "planner", name: "Set up the planner",
+        why: savedPlanner ? "" :
+          (s.wbUrl ? "Connected, but not saved yet \u2014 set its fiscal year and save it."
+                   : "Create one, or connect the workbook you already use."),
+        done: savedPlanner, action: "planner" },
+      { key: "invite", name: "Invite your travelers",
+        why: "They click one button and are set up from it.",
+        done: invited, action: "inviteTo", needs: org && savedPlanner },
+    ];
+  }
 
   /**
    * What is still missing before a setup is worth handing to anybody.
@@ -456,6 +491,7 @@
         profileStamp: TravelForm.profileStamp(raw),
         profileAppliedAt: new Date().toISOString(),
       });
+      renderCoordSteps();
       // a saved planner carries its resolved ref, so there's nothing left to
       // click; only a legacy single-workbook code needs Connect
       var ready = patch.planners && Object.keys(patch.planners).some(function (k) {
@@ -578,6 +614,7 @@
     verifyPlannerAccess(pl[key].wbRef, "coordinator");
     noteWhereThePlannerLives(pl[key].wbUrl);
     noteInvitesStale();
+    renderCoordSteps();
     setStatus("info", (key === "*" ? "Saved as the catch-all planner." :
       "Saved as the " + key + " planner \u2014 trips dated in " + key + " will go there automatically."));
   }
@@ -702,6 +739,13 @@
     var s = settings();
     var configured = !!(s.wbUrl || s.coordEmail ||
       (s.planners && Object.keys(s.planners).length));
+    // A coordinator part-way through setup is NOT "set up", whatever the
+    // presence of a workbook link suggests. Saying both at once - "You're set
+    // up" above "1 of 3 done" - is worse than saying neither.
+    if (!s.profileStamp && coordStages(s).some(function (x) { return !x.done; }) &&
+        (s.isCoordinator || s.coordEmail || s.wbUrl || s.orgName || s.planners)) {
+      el.hidden = true; return;
+    }
     if (configured && trips().length) { el.hidden = true; return; }
 
     el.hidden = false;
@@ -724,10 +768,15 @@
       btn.textContent = "I'm the coordinator";
       btn.style.marginLeft = "6px";
       btn.addEventListener("click", function () {
+        // Declaring the role is what lets the checklist appear for a
+        // coordinator without ever appearing for a traveler.
+        saveSettings({ isCoordinator: true });
         var setup = byId("setup");
         setup.setAttribute("open", "open");
         try { setup.scrollIntoView({ behavior: "smooth", block: "start" }); }
         catch (e) { setup.scrollIntoView(); }
+        renderCoordSteps();
+        gotoStage("coordEmail");
       });
       el.appendChild(h); el.appendChild(body); el.appendChild(find); el.appendChild(btn);
       return;
@@ -1155,6 +1204,89 @@
       wrap.appendChild(b);
     });
     box.appendChild(wrap);
+  }
+
+  /**
+   * Show the stages until they are done, and never to a traveler.
+   *
+   * Somebody set up from a code is not configuring anything - showing them a
+   * coordinator's checklist would be noise at best and alarming at worst.
+   */
+  function renderCoordSteps() {
+    var box = byId("coordSteps");
+    if (!box) { return; }
+    var st = settings();
+    if (st.profileStamp) { box.hidden = true; return; }   // set up from a code
+    // On a fresh install we do not yet know which role this is, and a
+    // coordinator's checklist in front of somebody who is about to click
+    // "Find my setup" is worse than nothing.
+    var started = st.isCoordinator || st.coordEmail || st.wbUrl || st.orgName ||
+      st.planners || st.invitesSentAt;
+    if (!started) { box.hidden = true; return; }
+    var stages = coordStages(st);
+    if (stages.every(function (x) { return x.done; })) { box.hidden = true; return; }
+
+    box.hidden = false;
+    box.innerHTML = "";
+    var h = document.createElement("h3");
+    h.textContent = "Setting up for your team";
+    var sub = document.createElement("p");
+    sub.className = "steps-sub";
+    var doneCount = stages.filter(function (x) { return x.done; }).length;
+    sub.textContent = doneCount + " of " + stages.length + " done \u00b7 " +
+      "each one has to come before the next.";
+    box.appendChild(h); box.appendChild(sub);
+
+    var ol = document.createElement("ol");
+    var firstOpen = true;
+    stages.forEach(function (stage, i) {
+      var li = document.createElement("li");
+      var isNow = !stage.done && firstOpen && stage.needs !== false;
+      if (stage.done) { li.className = "done"; }
+      else if (isNow) { li.className = "now"; firstOpen = false; }
+
+      var mark = document.createElement("span");
+      mark.className = "step-mark";
+      mark.textContent = stage.done ? "\u2713" : String(i + 1);
+
+      var body = document.createElement("div");
+      body.className = "step-body";
+      var nm = document.createElement("span");
+      nm.className = "step-name";
+      nm.textContent = stage.name;
+      body.appendChild(nm);
+      if (!stage.done && stage.why) {
+        var why = document.createElement("span");
+        why.className = "step-why";
+        why.textContent = stage.needs === false
+          ? "Ready once the two above are done."
+          : stage.why;
+        body.appendChild(why);
+      }
+      if (!stage.done && stage.needs !== false) {
+        var go = document.createElement("button");
+        go.type = "button";
+        go.textContent = "Take me there";
+        go.addEventListener("click", function () { gotoStage(stage.action); });
+        body.appendChild(go);
+      }
+      li.appendChild(mark); li.appendChild(body);
+      ol.appendChild(li);
+    });
+    box.appendChild(ol);
+  }
+
+  /** Open whatever is collapsed around a control, then put it on screen. */
+  function gotoStage(action) {
+    setAttrIf("setup", "open", "open");
+    setAttrIf("coordSetup", "open", "open");
+    var target = action === "planner" ? byId("coordSetup") : byId(action);
+    if (!target) { return; }
+    try { target.scrollIntoView({ behavior: "smooth", block: "center" }); }
+    catch (e) { target.scrollIntoView(); }
+    if (target.focus && action !== "planner") {
+      try { target.focus({ preventScroll: true }); } catch (e) { target.focus(); }
+    }
   }
 
   // ------------------------------------------- is my setup out of date?
@@ -1825,6 +1957,7 @@
           coordName: prof.displayName, coordEmail: prof.emailAddress,
         }));
       saveSettings({ invitesSentAt: new Date().toISOString(), invitesStamp: TravelForm.profileStamp(code) });
+      renderCoordSteps();
       byId("inviteInfo").style.color = "";
       byId("inviteInfo").textContent = "Invitation drafted for " + emails.length +
         " traveler(s) — review it and press Send.";

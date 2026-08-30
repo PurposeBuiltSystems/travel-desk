@@ -300,7 +300,26 @@
     return hits[0];
   }
 
+  /**
+   * Is this workbook in somebody's personal OneDrive rather than on a site?
+   *
+   * It matters for a SHARED planner, and the difference is invisible in the
+   * add-in: both are "SharePoint" URLs and both connect identically. A file on
+   * a personal drive has to be shared with each traveler by hand, and it
+   * leaves with the account when its owner changes role - which for a
+   * division's travel record is a genuine loss, discovered at the worst time.
+   *
+   *   personal:  contoso-my.sharepoint.com/personal/jane_contoso_com/Documents/…
+   *   site:      contoso.sharepoint.com/sites/PublicWorks/Shared Documents/…
+   */
+  function isPersonalDrive(url) {
+    var u = String(url || "").toLowerCase();
+    if (!u) { return false; }
+    return /-my\.sharepoint\.com/.test(u) || /\/personal\/[^/]+\//.test(u);
+  }
+
   var api = {
+    isPersonalDrive: isPersonalDrive,
     fieldIndex: fieldIndex, mapRows: mapRows, summarize: summarize,
     findRowIndex: findRowIndex, markSettled: markSettled, isSettled: isSettled,
     queues: queues, budgetTruth: budgetTruth,

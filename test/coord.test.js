@@ -203,6 +203,24 @@ check("new request has no approver", fresh[H.indexOf("Approved by")], "");
 check("new request has no approval date", fresh[H.indexOf("Approved date")], "");
 check("new request starts as Requested", fresh[H.indexOf("Status")], "Requested");
 
+// --------------------------- where a shared planner actually lives
+//
+// Both shapes are sharepoint.com URLs and both connect identically, so the
+// only place this difference can be caught is here.
+
+var C = require("../src/coord.js");
+[
+  ["https://netorg19631045-my.sharepoint.com/personal/matthew_purposebuilt_systems/Documents/Division travel planner.xlsx", true],
+  ["https://contoso-my.sharepoint.com/personal/jane_contoso_com/Documents/Planner.xlsx", true],
+  ["https://iowadot.sharepoint.com/sites/SystemsOps/Shared%20Documents/Travel/Planner.xlsx", false],
+  ["https://contoso.sharepoint.com/sites/PublicWorks/Shared Documents/Planner.xlsx", false],
+  ["https://contoso.sharepoint.com/teams/Ops/Documents/Planner.xlsx", false],
+  ["", false],
+  [null, false],
+].forEach(function (t) {
+  check("personal drive? " + String(t[0]).slice(0, 58), C.isPersonalDrive(t[0]), t[1]);
+});
+
 if (failures) {
   console.error("\n" + failures + " coordinator test(s) FAILED");
   process.exit(1);

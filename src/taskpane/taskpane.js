@@ -495,6 +495,7 @@
     renderPlannerList();
     checkPlannerColumns();          // a just-connected planner may predate the lifecycle
     verifyPlannerAccess(pl[key].wbRef, "coordinator");
+    noteWhereThePlannerLives(pl[key].wbUrl);
     setStatus("info", (key === "*" ? "Saved as the catch-all planner." :
       "Saved as the " + key + " planner \u2014 trips dated in " + key + " will go there automatically."));
   }
@@ -2230,6 +2231,35 @@
    * on their own, because everything else about the add-in works fine for
    * them right up until the row silently does not appear.
    */
+  /**
+   * Say once, to the coordinator, where the planner actually lives.
+   *
+   * A personal-OneDrive planner and a site planner look identical in here -
+   * both are sharepoint.com URLs, both connect the same way, both work
+   * perfectly for the person who created them. The difference only shows up
+   * as other people failing to write, and as the file vanishing when its
+   * owner changes role. Said once at setup it costs a minute to fix; found
+   * later it costs the division its travel record.
+   */
+  function noteWhereThePlannerLives(url) {
+    if (!url || !TravelCoord.isPersonalDrive(url)) { return; }
+    if (settings().plannerHomeNoted) { return; }
+    saveSettings({ plannerHomeNoted: true });
+    var box = byId("plannerList");
+    if (!box) { return; }
+    var p = document.createElement("p");
+    p.className = "warnbox";
+    p.style.marginTop = "8px";
+    p.innerHTML =
+      "<b>This planner is in your personal OneDrive.</b> It works, and you can stop here \u2014 " +
+      "but two things follow from it. Every traveler needs you to share the file with them " +
+      "individually before their rows will land, and the file goes with your account if you " +
+      "change roles. A workbook on a Teams or SharePoint site takes its permissions from the " +
+      "site\u2019s membership instead, so anyone already on the site can file. Travel Desk " +
+      "connects to either one identically \u2014 <b>Show my files</b> lists both.";
+    box.appendChild(p);
+  }
+
   async function verifyPlannerAccess(ref, who) {
     if (!ref || !ref.driveId || !ref.itemId) { return; }
     try {

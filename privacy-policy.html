@@ -7,38 +7,145 @@
   <style>
     body { font-family: -apple-system, Segoe UI, sans-serif; margin: 3rem auto; max-width: 44rem; padding: 0 1rem; color: #242424; line-height: 1.55; }
     h1 { color: #0f6cbd; }
+    h2 { color: #0f6cbd; margin-top: 2rem; font-size: 1.15rem; }
+    h3 { margin-top: 1.4rem; font-size: 1rem; }
     .muted { color: #616161; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: .95em; }
+    th, td { border: 1px solid #d1d1d1; padding: 6px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef4f6; }
+    code { background: #f2f2f2; padding: 1px 5px; border-radius: 4px; }
+    .box { background: #eff6fc; border-radius: 8px; padding: 12px 16px; margin: 14px 0; }
   </style>
 </head>
 <body>
   <h1>Privacy Policy</h1>
-  <p class="muted">Add-in: <strong>Travel Desk</strong> · Publisher: PurposeBuilt Systems LLC · Effective: July 13, 2026</p>
+  <p class="muted">Add-in: <strong>Travel Desk</strong> · Publisher: PurposeBuilt Systems LLC ·
+     Effective: August 30, 2026 · <span class="muted">Supersedes the version of July 13, 2026</span></p>
 
   <h2>The short version</h2>
-  <p><strong>We collect no data. None.</strong> Travel Desk has no servers, no accounts,
-     no analytics, and no trackers. Your travel details never leave your
-     Microsoft 365 environment and are never seen, stored, or shared by us.</p>
+  <p><strong>We collect no data. None.</strong> Travel Desk has no servers, no accounts, no
+     analytics and no trackers. Nothing it reads is transmitted anywhere except to Microsoft
+     Graph, using your own signed-in identity, inside your organization's Microsoft 365 tenant.
+     The publisher never sees any of it.</p>
+  <p>That is not the whole story, though, and the rest of this page is the part that matters:
+     <strong>what it reads, when, and what is kept afterwards.</strong> "We store nothing" is
+     true and is not the same as "nothing is stored".</p>
 
-  <h2>How it works</h2>
-  <p>Travel Desk runs entirely in your Outlook session. Using Microsoft Graph —
-     Microsoft 365's own service — with your signed-in identity, it:</p>
+  <h2>What it reads, and when</h2>
+  <p>Every one of these happens only in response to something you click. Travel Desk reads
+     nothing in the background and nothing on a schedule.</p>
+
+  <table>
+    <tr><th>When you click…</th><th>It reads</th></tr>
+    <tr>
+      <td><strong>Fill from this email</strong></td>
+      <td>The subject, body and file attachments of the <em>one message you have open</em>.
+          Attachments are decoded in the task pane — PDF, Word, Excel, PowerPoint, calendar
+          invites and plain text — to find the event, dates, destination and costs. They are
+          not uploaded anywhere.</td>
+    </tr>
+    <tr>
+      <td><strong>Search my inbox for travel emails</strong></td>
+      <td>The subject, sender, date and Outlook's short preview (roughly the first 250
+          characters of the body) of <em>every message in your Inbox from the last 180
+          days</em> — not only travel ones, because there is no way to tell which are which
+          without looking. This is examined in the task pane, ranked, and discarded when you
+          close it. Nothing from it is written down. Full bodies and attachments are fetched
+          only for the one message you then choose.</td>
+    </tr>
+    <tr>
+      <td><strong>Check for booking emails</strong></td>
+      <td>The same summary fields for recent Inbox mail, to match a booking confirmation to a
+          trip you have already filed.</td>
+    </tr>
+    <tr>
+      <td><strong>Find my setup</strong></td>
+      <td>Only messages whose subject begins with your organization's setup-invitation
+          prefix.</td>
+    </tr>
+    <tr>
+      <td><strong>Create travel request</strong></td>
+      <td>Nothing. It writes: a draft in your own mailbox, and a row in the planner workbook.</td>
+    </tr>
+  </table>
+
+  <div class="box">
+    <strong>The inbox search is the broadest thing this add-in does.</strong> If that is more
+    than you want, do not use that button — everything else works without it, and
+    <em>Fill from this email</em> only ever looks at the message in front of you.
+  </div>
+
+  <h3>Reading your signature block</h3>
+  <p>When filling the form, Travel Desk looks at the signature under a message you have already
+     opened to find your division, bureau and home city, so you do not retype them. It matches
+     on your own name and reads only the lines beneath it.</p>
+
+  <h2>What is stored, and where</h2>
+  <p>Two places, both inside your Microsoft 365 tenant. The publisher has access to neither.</p>
+
+  <h3>1. Your own Outlook add-in settings</h3>
+  <p>Held in <em>your mailbox</em> by Outlook (<code>roamingSettings</code>), so they follow you
+     between devices. They contain:</p>
   <ul>
-    <li>creates a Travel Authorization email <em>draft</em> in your own mailbox
-        (delegated permission Mail.ReadWrite; nothing is ever sent automatically), and</li>
-    <li>appends rows to the travel planner workbook your organization shares with
-        you on SharePoint or OneDrive (delegated permission Files.ReadWrite.All —
-        it can only reach files you can already reach; it grants no new access).</li>
+    <li>Your name, cost center, division and bureau.</li>
+    <li>Your organization's settings: the planner link, coordinator and finance addresses,
+        fiscal-year rules, and any custom wording mapped for your travel form.</li>
+    <li><strong>A history of the travel requests you have filed</strong> — up to 25, of which
+        the most recent hold the full form: event, dates, destination, reason for travel,
+        costs, and third-party billing contacts. This exists so you can copy a previous
+        request instead of retyping it. Anyone with access to your mailbox can read it, as
+        they could read your mail.</li>
   </ul>
-  <p>All computation (totals, fiscal years, form generation) is deterministic logic
-     in your Outlook client. No artificial intelligence, no external services, no
-     third-party data processors.</p>
+  <p>Removing the add-in removes these.</p>
 
-  <h2>What we store</h2>
-  <p>Your setup choices (workbook link, table name, coordinator email, your name and
-     cost center) are stored in your own Outlook add-in settings so you don't retype
-     them. They live in your mailbox, not with us.</p>
+  <h3>2. The shared planner workbook</h3>
+  <p>An Excel file your organization owns, on SharePoint or OneDrive. Each request adds a row:
+     traveler, division, bureau, event, destination, dates, costs, funding and status.</p>
+  <div class="box">
+    <strong>A shared planner is a disclosure, by design.</strong> Everyone who can open that
+    workbook can see everyone else's travel and costs — that is what makes it a planner. Who
+    can open it is decided by your organization's file permissions, not by this add-in.
+  </div>
+
+  <h2>Where data can go</h2>
+  <p>The add-in makes network requests to exactly two hosts, both Microsoft's:</p>
+  <ul>
+    <li><code>graph.microsoft.com</code> — every mail and file operation, as the signed-in user.</li>
+    <li><code>login.microsoftonline.com</code> — sign-in only.</li>
+  </ul>
+  <p>There is no publisher server to send anything to. The add-in is static HTML and JavaScript
+     served from GitHub Pages, and the only other outbound requests a browser makes are for
+     Microsoft's own Office.js and two open-source libraries (MSAL and JSZip) loaded from a
+     public CDN as code — no data of yours is included in those requests.</p>
+
+  <h2>Permissions, and why each is needed</h2>
+  <table>
+    <tr><th>Permission</th><th>Why</th></tr>
+    <tr><td><code>Mail.ReadWrite</code> (delegated)</td>
+        <td>Read the messages described above; create the authorization draft in your own
+            Drafts. Nothing is ever sent automatically.</td></tr>
+    <tr><td><code>Files.ReadWrite.All</code> (delegated)</td>
+        <td>Read and append rows to the planner workbook. Delegated means it reaches only
+            files you can already reach; it grants no new access.</td></tr>
+    <tr><td>Mailbox requirement set 1.8</td>
+        <td>Reading the attachments of the message you have open
+            (<code>getAttachmentContentAsync</code>).</td></tr>
+  </table>
+  <p>All permissions are <strong>delegated</strong>. There are no application permissions, so
+     the add-in can never act on a mailbox or file that you cannot.</p>
+
+  <h2>No AI, and no profiling</h2>
+  <p>Extraction is deterministic pattern-matching. No content is sent to a language model or
+     any other external service, and nothing is used to build a profile of you or to train
+     anything.</p>
+
+  <h2>Auditability</h2>
+  <p>Because every operation is a delegated Graph call, each one appears in your organization's
+     Microsoft 365 unified audit log, attributed to this application's ID and to the signed-in
+     user. Your administrators can see exactly what it did, without asking us.</p>
 
   <h2>Contact</h2>
-  <p>Questions: <a href="mailto:Matthew@purposebuilt.systems">Matthew@purposebuilt.systems</a></p>
+  <p>Questions, or a request to explain any of the above in more detail:
+     <a href="mailto:Matthew@purposebuilt.systems">Matthew@purposebuilt.systems</a></p>
 </body>
 </html>

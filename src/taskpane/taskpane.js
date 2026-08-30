@@ -254,6 +254,8 @@
     step("the build indicator", renderVersion);
     // Only when it has never verified: this must not become a Graph call on
     // every single open.
+    step("the setup freshness check", checkSetupFreshness);
+    step("the stale-invitation notice", noteInvitesStale);
     if (s.wbRef && s.plannerWriteOk !== true) {
       step("the planner access check", function () { verifyPlannerAccess(s.wbRef, "traveler"); });
     }
@@ -299,6 +301,7 @@
         patch[k] = byId(k).value;
         saveSettings(patch);
         applyOrgLabels();
+        noteInvitesStale();
       });
     });
     ["cTravelMode", "cLuggage", "cParking", "cTaxi", "cLodgingNights",
@@ -330,6 +333,37 @@
   });
 
   // ---------- org profile (share setup with the team) ----------
+
+  /** The setup code as it stands right now. */
+  function currentProfileCode() {
+    var st = settings();
+    var out = {};
+    PROFILE_FIELDS.forEach(function (k) { if (st[k]) { out[k] = st[k]; } });
+    try { return btoa(unescape(encodeURIComponent(JSON.stringify(out)))); }
+    catch (e) { return ""; }
+  }
+
+  /**
+   * Tell the coordinator when what they have sent no longer matches what they
+   * have.
+   *
+   * The traveler's side of this notices too, but only the next time each of
+   * them opens the pane - which for somebody who travels twice a year is
+   * months. The person who made the change is the one who can fix it today,
+   * and they are the only one who knows they made it.
+   */
+  function noteInvitesStale() {
+    var st = settings();
+    if (!st.invitesSentAt) { return; }
+    var box = byId("inviteInfo");
+    if (!box) { return; }
+    var now = TravelForm.profileStamp(currentProfileCode());
+    if (!now || now === st.invitesStamp) { return; }
+    box.textContent = "\u26a0\ufe0f Your settings have changed since you last invited anyone. " +
+      "Until you send the invitation again, everyone already set up keeps using the old " +
+      "planner and the old rules \u2014 and their trips will not appear in your view.";
+    box.style.color = "var(--err-fg)";
+  }
 
   function profileCopy() {
     var s = settings();
@@ -375,6 +409,12 @@
         sel.appendChild(opt);
       }
       applyOrgLabels();
+      // Record what was applied, so a later invitation can be recognised as
+      // newer rather than identical.
+      saveSettings({
+        profileStamp: TravelForm.profileStamp(raw),
+        profileAppliedAt: new Date().toISOString(),
+      });
       // a saved planner carries its resolved ref, so there's nothing left to
       // click; only a legacy single-workbook code needs Connect
       var ready = patch.planners && Object.keys(patch.planners).some(function (k) {
@@ -496,6 +536,7 @@
     checkPlannerColumns();          // a just-connected planner may predate the lifecycle
     verifyPlannerAccess(pl[key].wbRef, "coordinator");
     noteWhereThePlannerLives(pl[key].wbUrl);
+    noteInvitesStale();
     setStatus("info", (key === "*" ? "Saved as the catch-all planner." :
       "Saved as the " + key + " planner \u2014 trips dated in " + key + " will go there automatically."));
   }
@@ -1073,6 +1114,74 @@
       wrap.appendChild(b);
     });
     box.appendChild(wrap);
+  }
+
+  // ------------------------------------------- is my setup out of date?
+
+  var STALE_CHECK_HOURS = 24;
+
+  /**
+   * Notice when the coordinator has moved on without you.
+   *
+   * A traveler's settings are a copy taken the day they were set up. Move the
+   * planner and they keep writing to the old workbook - no error, no clue,
+   * and the coordinator simply stops seeing them. This is the same silent
+   * shape as the write-permission gap, and the only way to close it is for
+   * the traveler's own pane to go and look.
+   *
+   * Cheap on purpose: at most once a day, only for people set up FROM a code,
+   * and the date comparison is free metadata - a body is fetched only when
+   * something genuinely newer exists.
+   */
+  async function checkSetupFreshness() {
+    var s = settings();
+    if (!s.profileStamp) { return; }          // coordinators set themselves up
+    var last = Date.parse(s.staleCheckedAt || 0) || 0;
+    if (Date.now() - last < STALE_CHECK_HOURS * 36e5) { return; }
+    saveSettings({ staleCheckedAt: new Date().toISOString() });
+
+    try {
+      var token = await GraphData.getToken();
+      var msgs = await GraphData.setupInvites(token, "Travel Desk setup");
+      var newer = TravelForm.newerInvite(msgs, s.profileAppliedAt);
+      if (!newer) { return; }
+
+      var body = await GraphData.messageBody(token, newer.id);
+      var code = TravelForm.extractSetupCode(body);
+      if (!code || TravelForm.profileStamp(code) === s.profileStamp) { return; }
+
+      offerSetupUpdate(code, newer);
+    } catch (e) { /* a check that cannot run is not news */ }
+  }
+
+  function offerSetupUpdate(code, invite) {
+    var host = byId("firstRun");
+    if (!host) { return; }
+    host.hidden = false;
+    host.innerHTML = "";
+    var h = document.createElement("p");
+    h.className = "firstrun-h";
+    h.textContent = "\u26a0\ufe0f Your travel coordinator has sent newer settings";
+    var b = document.createElement("p");
+    b.className = "firstrun-b";
+    b.textContent = "The planner, the coordinator address or the fiscal-year rules have " +
+      "changed since you were set up" +
+      (invite && invite.receivedDateTime ? " (" + invite.receivedDateTime.slice(0, 10) + ")" : "") +
+      ". Until you take them, your requests keep going to the old planner \u2014 where " +
+      "nobody is looking.";
+    var go = document.createElement("button");
+    go.className = "primary";
+    go.textContent = "Use the new settings";
+    go.addEventListener("click", function () {
+      profileApply(code);
+      saveSettings({
+        profileStamp: TravelForm.profileStamp(code),
+        profileAppliedAt: (invite && invite.receivedDateTime) || new Date().toISOString(),
+      });
+      host.hidden = true;
+      renderFirstRun();
+    });
+    host.appendChild(h); host.appendChild(b); host.appendChild(go);
   }
 
   // ------------------------------------- find travel emails in the mailbox
@@ -1672,6 +1781,8 @@
           code: code, orgName: st.orgName,
           coordName: prof.displayName, coordEmail: prof.emailAddress,
         }));
+      saveSettings({ invitesSentAt: new Date().toISOString(), invitesStamp: TravelForm.profileStamp(code) });
+      byId("inviteInfo").style.color = "";
       byId("inviteInfo").textContent = "Invitation drafted for " + emails.length +
         " traveler(s) — review it and press Send.";
       setStatus("info", "Invitation ready in your Drafts for " + emails.join(", ") +
@@ -1713,7 +1824,12 @@
       }
       var from = ((invite.from || {}).emailAddress || {}).name ||
                  ((invite.from || {}).emailAddress || {}).address || "your coordinator";
-      profileApply(TravelForm.extractSetupCode(invite.body));
+      var code = TravelForm.extractSetupCode(invite.body);
+      profileApply(code);
+      saveSettings({
+        profileStamp: TravelForm.profileStamp(code),
+        profileAppliedAt: invite.receivedDateTime || new Date().toISOString(),
+      });
       setStatus("info", "Set up from " + from + "'s invitation. Fill in the form below and " +
         "click Create travel request.");
     } catch (e) {

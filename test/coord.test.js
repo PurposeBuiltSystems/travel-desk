@@ -221,6 +221,43 @@ var C = require("../src/coord.js");
   check("personal drive? " + String(t[0]).slice(0, 58), C.isPersonalDrive(t[0]), t[1]);
 });
 
+// ----------------------- noticing that a traveler's setup has gone stale
+//
+// A traveler's settings are a COPY. Nothing about their pane looks wrong when
+// the coordinator moves the planner, so this comparison is the only thing
+// standing between them and months of writing to a workbook nobody reads.
+
+var FF = require("../src/form.js");
+
+var CODE_A = Buffer.from(JSON.stringify({ wbUrl: "https://x/old.xlsx", fyPrefix: "SFY" })).toString("base64");
+var CODE_B = Buffer.from(JSON.stringify({ wbUrl: "https://x/new.xlsx", fyPrefix: "SFY" })).toString("base64");
+
+check("the same code always stamps the same",
+  FF.profileStamp(CODE_A), FF.profileStamp(CODE_A));
+check("a moved planner changes the stamp",
+  FF.profileStamp(CODE_A) === FF.profileStamp(CODE_B), false);
+check("no code, no stamp", FF.profileStamp(""), "");
+check("a stamp is short enough to store", FF.profileStamp(CODE_A).length, 8);
+
+var INVITES = [
+  { id: "jan", receivedDateTime: "2026-01-05T09:00:00Z" },
+  { id: "aug", receivedDateTime: "2026-08-20T09:00:00Z" },
+  { id: "jul", receivedDateTime: "2026-07-02T09:00:00Z" },
+];
+check("finds the newest invitation after the one applied",
+  (FF.newerInvite(INVITES, "2026-02-01T00:00:00Z") || {}).id, "aug");
+check("nothing newer means nothing to do",
+  FF.newerInvite(INVITES, "2026-09-01T00:00:00Z"), null);
+check("never set up: the newest is the one to take",
+  (FF.newerInvite(INVITES, "") || {}).id, "aug");
+check("an invitation with no date is ignored, not crashed on",
+  (FF.newerInvite([{ id: "x" }].concat(INVITES), "2026-02-01T00:00:00Z") || {}).id, "aug");
+check("an empty mailbox is not an error", FF.newerInvite([], ""), null);
+
+// A coordinator resending an IDENTICAL profile must not make anyone act.
+check("a resend of the same settings is not a change",
+  FF.profileStamp(CODE_A) === FF.profileStamp(CODE_A), true);
+
 if (failures) {
   console.error("\n" + failures + " coordinator test(s) FAILED");
   process.exit(1);

@@ -608,12 +608,55 @@
     return { model: m, dropped: dropped };
   }
 
+  /**
+   * A short, stable fingerprint of a setup code.
+   *
+   * A traveler's settings are a COPY, taken once. Move the planner, change the
+   * fiscal year or the coordinator address, and every traveler carries on
+   * writing to the old workbook with the old rules - silently, because nothing
+   * about their pane looks wrong. Storing what they applied is what makes
+   * "yours is older than mine" answerable at all.
+   *
+   * FNV-1a: not a security hash, and does not need to be. It only has to
+   * differ when the code differs.
+   */
+  function profileStamp(code) {
+    var s = String(code || "");
+    if (!s) { return ""; }
+    var h = 0x811c9dc5;
+    for (var i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+    }
+    return ("0000000" + h.toString(16)).slice(-8);
+  }
+
+  /**
+   * Is there a newer invitation than the one this traveler applied?
+   *
+   * Compared on the date first because that is free - the search returns it as
+   * metadata. Only a message that is genuinely newer is worth opening to see
+   * whether its code actually differs; a coordinator who resends an identical
+   * profile should not make anybody do anything.
+   */
+  function newerInvite(messages, appliedAtIso) {
+    var best = null;
+    (messages || []).forEach(function (m) {
+      if (!m || !m.receivedDateTime) { return; }
+      if (appliedAtIso && m.receivedDateTime <= appliedAtIso) { return; }
+      if (!best || m.receivedDateTime > best.receivedDateTime) { best = m; }
+    });
+    return best;
+  }
+
   var api = {
     pickPlanner: pickPlanner,
     STATUS: STATUS,
     isAuthorized: isAuthorized,
     variance: variance,
     varianceFlag: varianceFlag,
+    profileStamp: profileStamp,
+    newerInvite: newerInvite,
     setupSubject: setupSubject,
     setupInviteHtml: setupInviteHtml,
     extractSetupCode: extractSetupCode,

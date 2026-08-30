@@ -508,14 +508,33 @@
    * prefix so a traveller never has to find, open, or copy anything.
    */
   async function setupInvites(token, subjectPrefix) {
+    var prefix = String(subjectPrefix || "Travel Desk setup");
     var res = await graphJson(token, "GET",
       "/me/messages?$select=id,subject,from,receivedDateTime" +
       "&$filter=" + encodeURIComponent("startswith(subject,'" +
-        String(subjectPrefix || "Travel Desk setup").replace(/'/g, "''") + "')") +
+        prefix.replace(/'/g, "''") + "')") +
       // NO $orderby: Graph rejects it alongside a startswith() filter with
       // "InefficientFilter". pickInvite() sorts newest-first client-side.
       "&$top=50");
-    return res.value || [];
+    var hits = res.value || [];
+    if (hits.length) { return hits; }
+
+    // startswith() cannot see an invitation that arrived with anything in
+    // front of it - "FW: Travel Desk setup ..." is a miss, and forwarding it
+    // to yourself is exactly what someone does when it lands in the wrong
+    // mailbox. $search has no such problem, but it cannot be combined with
+    // $filter, so it is a second pass rather than the first.
+    try {
+      var alt = await graphJson(token, "GET",
+        "/me/messages?$select=id,subject,from,receivedDateTime" +
+        "&$search=" + encodeURIComponent('"subject:' + prefix.replace(/"/g, "") + '"') +
+        "&$top=25");
+      return (alt.value || []).filter(function (m) {
+        return String(m.subject || "").toLowerCase().indexOf(prefix.toLowerCase()) >= 0;
+      });
+    } catch (e) {
+      return [];
+    }
   }
 
   /** Full body of one message (search results carry only metadata). */

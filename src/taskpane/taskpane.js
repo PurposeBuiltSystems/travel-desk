@@ -334,6 +334,42 @@
 
   // ---------- org profile (share setup with the team) ----------
 
+  /**
+   * What is still missing before a setup is worth handing to anybody.
+   *
+   * Both of these let a coordinator finish successfully and ship an
+   * incomplete setup to their whole team, which is the worst kind of
+   * unfinished - it looks done.
+   *
+   * CONNECTING a workbook is not SAVING it. Connect stores the link, which is
+   * enough for the invitation to be allowed, but not the resolved reference -
+   * so every traveler who applies that code is told to "click Connect
+   * workbook once to finish", a technical instruction they were never meant
+   * to see and cannot be expected to understand.
+   *
+   * And nothing ever required the coordinator's own address, so a profile
+   * could go out without one and every traveler's authorization draft would
+   * be addressed to nobody.
+   */
+  function setupGaps() {
+    var st = settings();
+    var gaps = [];
+    var armed = st.planners && Object.keys(st.planners).some(function (k) {
+      return st.planners[k] && st.planners[k].wbRef;
+    });
+    if (!armed) {
+      gaps.push(st.wbUrl
+        ? "the planner is connected but not saved \u2014 set its fiscal year and click " +
+          "\u201cSave planner for this year\u201d, or your travelers each have to connect it themselves"
+        : "no planner is connected yet");
+    }
+    if (!String(st.coordEmail || "").trim()) {
+      gaps.push("no travel coordinator address \u2014 without it, every traveler\u2019s " +
+        "authorization draft is addressed to nobody");
+    }
+    return gaps;
+  }
+
   /** The setup code as it stands right now. */
   function currentProfileCode() {
     var st = settings();
@@ -366,6 +402,11 @@
   }
 
   function profileCopy() {
+    var gaps = setupGaps();
+    if (gaps.length) {
+      setStatus("error", "That code would not fully set anybody up: " + gaps.join("; ") + ".");
+      return;
+    }
     var s = settings();
     var out = {};
     PROFILE_FIELDS.forEach(function (k) { if (s[k]) { out[k] = s[k]; } });
@@ -1767,8 +1808,10 @@
       var st = settings();
       var out = {};
       PROFILE_FIELDS.forEach(function (k) { if (st[k]) { out[k] = st[k]; } });
-      if (!out.wbUrl && !out.planners) {
-        byId("inviteInfo").textContent = "Connect your planner first — otherwise there's nothing to send.";
+      var gaps = setupGaps();
+      if (gaps.length) {
+        byId("inviteInfo").style.color = "var(--err-fg)";
+        byId("inviteInfo").textContent = "Not ready to invite anyone yet: " + gaps.join("; ") + ".";
         return;
       }
       var code = btoa(unescape(encodeURIComponent(JSON.stringify(out))));

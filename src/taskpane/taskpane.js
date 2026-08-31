@@ -2187,8 +2187,10 @@
         : (untilDepart !== null && untilDepart > 0 && untilDepart < 14 * 864e5
             ? '<span style="color:var(--err-fg);font-weight:700">\u23f3 Requested \u2014 no booking email yet</span>'
             : '<span style="color:var(--warn-fg);font-weight:700">\u23f3 Requested</span>');
+      // A trip with no date printed an empty separator - "Winter Ops · · Requested".
+      var when = t.eventStart || t.departDate || "";
       return "<div style=\"border-top:1px solid var(--line);padding:6px 0\"><b>" + (t.event || "trip") + "</b> \u00b7 " +
-        (t.eventStart || t.departDate || "") + " \u00b7 " + chip +
+        (when ? when + " \u00b7 " : "") + chip +
         (t.bookingLink ? ' \u00b7 <a href="' + t.bookingLink + '" target="_blank" rel="noopener">open booking email</a>' : "") +
         (t.status !== "booked" ? ' \u00b7 <button type="button" class="chip-del" data-book="' + i + '">mark booked</button>' : "") +
         ' \u00b7 <button type="button" class="chip-del" data-copy="' + i + '">copy to a new request</button>' +
@@ -2341,6 +2343,92 @@
    * name are read out of that email first: a booking is the trip's real
    * shape, usually a day wider at each end than the conference itself.
    */
+  /**
+   * Ask for the dates rather than refusing over them.
+   *
+   * An older trip, or one copied from a request that never had them, has no
+   * departure date - and "add a departure date and try again" is a dead end
+   * dressed up as an error: it names the problem, offers no way to fix it,
+   * and sends the person off to find a form. Asking here takes four seconds,
+   * and what they type is kept on the trip so it is never asked twice.
+   *
+   * Resolves to null if they close it. A cancelled dialog is an answer.
+   */
+  function askForTripDates(trip) {
+    return new Promise(function (resolve) {
+      var host = byId("tripsList");
+      if (!host) { resolve(null); return; }
+      var old = byId("askDates");
+      if (old) { old.remove(); }
+
+      var box = document.createElement("div");
+      box.id = "askDates";
+      box.className = "warnbox";
+      box.style.marginTop = "8px";
+
+      var p = document.createElement("p");
+      p.style.margin = "0 0 6px";
+      p.innerHTML = "<b>When is this trip?</b> \u201c" +
+        String(trip.event || "That trip").replace(/[<>&]/g, "") +
+        "\u201d has no dates recorded, so there is nothing to put in the calendar yet.";
+
+      var row = document.createElement("div");
+      row.className = "row2";
+      function field(label, id, value) {
+        var l = document.createElement("label");
+        l.textContent = label;
+        var i = document.createElement("input");
+        i.type = "date"; i.id = id;
+        if (value) { i.value = value; }
+        l.appendChild(i);
+        row.appendChild(l);
+        return i;
+      }
+      var dep = field("Departure", "askDepart", trip.eventStart || "");
+      var ret = field("Return (optional)", "askReturn", "");
+
+      var actions = document.createElement("p");
+      actions.style.margin = "6px 0 0";
+      var ok = document.createElement("button");
+      ok.className = "primary";
+      ok.textContent = "Add to calendar";
+      var no = document.createElement("button");
+      no.textContent = "Cancel";
+      no.style.marginLeft = "6px";
+
+      function done(value) { box.remove(); resolve(value); }
+      no.addEventListener("click", function () { done(null); });
+      ok.addEventListener("click", function () {
+        var d = dep.value;
+        if (!d) {
+          setStatus("error", "A departure date is the one thing needed \u2014 the rest can follow.");
+          dep.focus();
+          return;
+        }
+        done({ departDate: d, returnDate: ret.value || d });
+      });
+
+      actions.appendChild(ok); actions.appendChild(no);
+      box.appendChild(p); box.appendChild(row); box.appendChild(actions);
+      host.appendChild(box);
+      try { box.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) { /* fine */ }
+      dep.focus();
+    });
+  }
+
+  /** Keep what the person just told us, so it is asked once and not again. */
+  function rememberTripDates(trip, dates) {
+    var list = trips();
+    var hit = null;
+    list.forEach(function (t) { if (t && t.id === trip.id) { hit = t; } });
+    if (!hit) { return; }
+    hit.departDate = dates.departDate;
+    if (!hit.returnDate) { hit.returnDate = dates.returnDate; }
+    if (!hit.eventStart) { hit.eventStart = dates.departDate; }
+    saveTrips(list);
+    renderTrips();
+  }
+
   async function addTripToCalendar(trip) {
     var mailbox = Office.context.mailbox;
     if (!mailbox || !mailbox.displayNewAppointmentForm) {
@@ -2363,8 +2451,13 @@
 
     var entry = TravelForm.calendarEntry(trip, hotel);
     if (!entry) {
-      setStatus("error", "That trip has no dates yet \u2014 add a departure date and try again.");
-      return;
+      setStatus("info", "");
+      var asked = await askForTripDates(trip);
+      if (!asked) { setStatus("info", "No appointment created."); return; }
+      trip = Object.assign({}, trip, asked);
+      rememberTripDates(trip, asked);
+      entry = TravelForm.calendarEntry(trip, hotel);
+      if (!entry) { setStatus("error", "Those dates didn't work \u2014 try again."); return; }
     }
     try {
       mailbox.displayNewAppointmentForm({

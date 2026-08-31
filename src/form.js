@@ -649,6 +649,59 @@
     return best;
   }
 
+  /**
+   * A trip as a calendar entry, ready for Outlook's own appointment form.
+   *
+   * Deliberately NOT written to the calendar. Writing would need
+   * Calendars.ReadWrite - a new scope, a changed consent screen, and another
+   * pass over the listing and the privacy policy - to save one click. It also
+   * breaks the rule the rest of this add-in follows: the draft opens, and you
+   * press send. Same here: the appointment opens, and you press save.
+   *
+   * Hotel dates win over the event's when both exist, because a booking is
+   * the trip's real shape - usually a day wider at each end than the
+   * conference it is for.
+   */
+  function calendarEntry(trip, hotel) {
+    var t = trip || {}, h = hotel || {};
+    var start = h.checkIn || t.departDate || t.eventStart || "";
+    var end = h.checkOut || t.returnDate || t.eventStart || start;
+    if (!start) { return null; }
+    if (end < start) { end = start; }
+
+    var where = h.name
+      ? h.name + (h.address && h.address !== t.location ? ", " + h.address : "")
+      : (t.location || "");
+
+    var lines = [];
+    if (t.event) { lines.push(t.event); }
+    if (t.location) { lines.push(t.location); }
+    if (h.name) { lines.push("Staying at " + h.name + (h.confirmation ? " (" + h.confirmation + ")" : "")); }
+    if (t.confDates) { lines.push(t.confDates); }
+    if (t.meetingLink) { lines.push(t.meetingLink); }
+    lines.push("");
+    lines.push("Added from Travel Desk.");
+
+    return {
+      subject: (t.event || "Travel") + (t.location ? " \u2014 " + t.location : ""),
+      location: where,
+      start: start,
+      end: end,
+      body: lines.join("\n"),
+    };
+  }
+
+  /** ISO date plus n days. */
+  function shiftIso(isoDate, n) {
+    var p = String(isoDate || "").split("-");
+    if (p.length !== 3) { return isoDate; }
+    var d = new Date(+p[0], +p[1] - 1, +p[2]);
+    if (isNaN(d.getTime())) { return isoDate; }
+    d.setDate(d.getDate() + n);
+    var mm = d.getMonth() + 1, dd = d.getDate();
+    return d.getFullYear() + "-" + (mm < 10 ? "0" : "") + mm + "-" + (dd < 10 ? "0" : "") + dd;
+  }
+
   var api = {
     pickPlanner: pickPlanner,
     STATUS: STATUS,
@@ -669,6 +722,8 @@
     reminderHtml: reminderHtml,
     matchBooking: matchBooking,
     BOOKING_LOOKBACK_DAYS: LOOKBACK_DAYS,
+    calendarEntry: calendarEntry,
+    shiftIso: shiftIso,
     slimModel: slimModel,
     copyForNewTrip: copyForNewTrip,
     computeTotals: computeTotals,

@@ -1678,6 +1678,71 @@
     };
   }
 
+  // ------------------------------------------------------ hotel bookings
+
+  var HOTEL_BRAND = /(marriott|hilton|hyatt|sheraton|westin|doubletree|embassy\s+suites|hampton\s+inn|holiday\s+inn|courtyard|residence\s+inn|fairfield|springhill|towneplace|homewood|home2|drury|staybridge|candlewood|comfort\s+(inn|suites)|quality\s+inn|best\s+western|la\s+quinta|wyndham|radisson|kimpton|omni|loews|four\s+points|aloft|element|ac\s+hotel|moxy|renaissance|autograph|hotel|inn|suites|lodge|resort)/i;
+
+  /**
+   * Hotel details out of a reservation email.
+   *
+   * Enough to put a useful entry in somebody's calendar: where they are
+   * staying, from when to when, and the number to quote at the desk. Check-in
+   * and check-out are what matter - a hotel booking's dates are the TRIP's
+   * real shape, often a day wider than the conference at each end, and they
+   * are stated plainly in a way conference prose never is.
+   */
+  function hotelDetails(text) {
+    var t = clean(text);
+    var out = { name: "", checkIn: "", checkOut: "", address: "", confirmation: "" };
+
+    // "Check-in: Wednesday, October 14, 2026" / "Arrival 10/14/2026"
+    var ci = /(check[\s-]?in|arrival|arriving)\s*(date)?\s*[:\-]?\s*([^\n]{0,44})/i.exec(t);
+    var co = /(check[\s-]?out|departure|departing)\s*(date)?\s*[:\-]?\s*([^\n]{0,44})/i.exec(t);
+    if (ci) { var a = findDates(ci[3]); if (a.length) { out.checkIn = a[0].start; } }
+    if (co) { var b = findDates(co[3]); if (b.length) { out.checkOut = b[0].start; } }
+
+    // A stay with no stated end is a one-night stay far less often than it is
+    // a parse that only found one date, so nothing is inferred here.
+    if (out.checkIn && out.checkOut && out.checkOut <= out.checkIn) { out.checkOut = ""; }
+
+    // A hotel's name runs FORWARD from its brand - "Hyatt Regency St. Louis at
+    // the Arch", "Hampton Inn Downtown" - so anchoring on the brand and
+    // reading back gives "Hyatt". Read forward instead, over capitalised words
+    // and the small connectors a property name is allowed to contain, and stop
+    // at anything that ends a name: punctuation, a number, a lowercase verb.
+    var CONNECT = { at: 1, the: 1, of: 1, on: 1, by: 1, and: 1, "&": 1, "-": 1 };
+    var STOP = { is: 1, was: 1, has: 1, will: 1, for: 1, your: 1, reservation: 1, confirmed: 1 };
+    var bm = HOTEL_BRAND.exec(t);
+    if (bm) {
+      // NOT split on a full stop: "Hyatt Regency St. Louis at the Arch" loses
+      // everything after "St." A newline or a comma really does end a name;
+      // the word rules below handle the rest.
+      var after = t.slice(bm.index).split(/[\n,;!?]/)[0];
+      var words = after.split(/\s+/);
+      var kept = [];
+      for (var w = 0; w < words.length && kept.length < 8; w++) {
+        var word = words[w];
+        var low = word.toLowerCase();
+        if (w > 0) {
+          if (STOP[low] || /\d/.test(word)) { break; }
+          if (!CONNECT[low] && !/^[A-Z]/.test(word)) { break; }
+        }
+        kept.push(word);
+      }
+      // A trailing connector belongs to whatever came next, not to the name.
+      while (kept.length > 1 && CONNECT[kept[kept.length - 1].toLowerCase()]) { kept.pop(); }
+      if (kept.length) { kept[kept.length - 1] = kept[kept.length - 1].replace(/\.$/, ""); }
+      out.name = kept.join(" ").replace(/\s{2,}/g, " ").trim();
+    }
+
+    var loc = findLocation(t);
+    if (loc.value) { out.address = loc.value; }
+
+    var code = findCode(t);
+    if (code) { out.confirmation = code; }
+    return out;
+  }
+
   // ------------------------------------------------ finding travel in a mailbox
 
   var TRAVEL_SENDERS = /(concur|concursolutions|eventleaf|cvent|eventbrite|regonline|whova|swoogo|hopin|marriott|hilton|hyatt|ihg|choicehotels|wyndham|bestwestern|delta|united|aa\.com|southwest|alaskaair|jetblue|amtrak|enterprise|hertz|avis|nationalcar|expedia|egencia|travelport|sabre|aashto|trb\.org|ite\.org|apwa|dot\.gov|fhwa)/i;
@@ -1791,6 +1856,7 @@
     findTimes: findTimes,
     findReimbursement: findReimbursement,
     findCode: findCode,
+    hotelDetails: hotelDetails,
     unwrapUrl: unwrapUrl,
     hrefs: hrefs,
     pickLink: pickLink,

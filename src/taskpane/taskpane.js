@@ -2192,8 +2192,15 @@
         (t.bookingLink ? ' \u00b7 <a href="' + t.bookingLink + '" target="_blank" rel="noopener">open booking email</a>' : "") +
         (t.status !== "booked" ? ' \u00b7 <button type="button" class="chip-del" data-book="' + i + '">mark booked</button>' : "") +
         ' \u00b7 <button type="button" class="chip-del" data-copy="' + i + '">copy to a new request</button>' +
+        ' \u00b7 <button type="button" class="chip-del" data-cal="' + i + '">add to calendar</button>' +
         "</div>";
     }).join("");
+    el.querySelectorAll("[data-cal]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var t = trips()[Number(b.getAttribute("data-cal"))];
+        if (t) { addTripToCalendar(t); }
+      });
+    });
     el.querySelectorAll("[data-copy]").forEach(function (b) {
       b.addEventListener("click", function () {
         copyTrip(Number(b.getAttribute("data-copy")));
@@ -2322,6 +2329,62 @@
     try { refreshTotal(); refreshFyLine(); } catch (e) { /* cosmetic */ }
   }
 
+  /**
+   * Open a pre-filled appointment for a trip. Outlook saves it, not us.
+   *
+   * displayNewAppointmentForm needs no Graph scope at all - it hands Outlook a
+   * form and steps back. Writing the event directly would need
+   * Calendars.ReadWrite, which is a new consent screen and another pass over
+   * the listing, to save the person one keystroke.
+   *
+   * If the trip has a matched hotel confirmation, its dates and the property
+   * name are read out of that email first: a booking is the trip's real
+   * shape, usually a day wider at each end than the conference itself.
+   */
+  async function addTripToCalendar(trip) {
+    var mailbox = Office.context.mailbox;
+    if (!mailbox || !mailbox.displayNewAppointmentForm) {
+      setStatus("error", "This version of Outlook can't open a new appointment from an add-in. " +
+        "The trip dates are on the request if you want to add it by hand.");
+      return;
+    }
+    setStatus("work", "Building the appointment\u2026");
+    var hotel = null;
+    try {
+      // Only if a booking email was actually matched to this trip.
+      if (trip.bookingId) {
+        var token = await GraphData.getToken();
+        var msg = await GraphData.messageFull(token, trip.bookingId);
+        var text = /<[a-z][\s\S]*>/i.test(msg.body || "")
+          ? TdMail.htmlToText(msg.body) : (msg.body || "");
+        hotel = TdMail.hotelDetails(text);
+      }
+    } catch (e) { hotel = null; }   // the trip's own dates are enough
+
+    var entry = TravelForm.calendarEntry(trip, hotel);
+    if (!entry) {
+      setStatus("error", "That trip has no dates yet \u2014 add a departure date and try again.");
+      return;
+    }
+    try {
+      mailbox.displayNewAppointmentForm({
+        requiredAttendees: [],
+        subject: entry.subject,
+        location: entry.location,
+        // All-day across the travel dates: end is exclusive, so a trip that
+        // returns on the 16th has to end on the 17th or the last day is lost.
+        start: new Date(entry.start + "T00:00:00"),
+        end: new Date(TravelForm.shiftIso(entry.end, 1) + "T00:00:00"),
+        body: entry.body,
+      });
+      setStatus("info", "Appointment opened" +
+        (hotel && hotel.name ? " with " + hotel.name + " and your booking dates" : "") +
+        ". Check it and save it \u2014 Travel Desk doesn't write to your calendar.");
+    } catch (e) {
+      setStatus("error", "Couldn't open the appointment: " + ((e && e.message) || e));
+    }
+  }
+
   async function checkBookings() {
     byId("checkBookings").disabled = true;
     try {
@@ -2345,6 +2408,7 @@
           markBookedEverywhere(t);
           t.bookingLink = m.confident.webLink || "";
           t.bookingSubject = m.confident.subject || "";
+          t.bookingId = m.confident.id || "";
           booked++;
         } else if (m.candidates.length) { unsure++; }
       });

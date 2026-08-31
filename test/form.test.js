@@ -356,6 +356,46 @@ check("invitation code decodes to real settings",
   JSON.parse(decodeURIComponent(escape(Buffer.from(F.extractSetupCode(invite), "base64").toString("binary")))).coordEmail,
   "keri@dot.gov");
 
+// -------------------------------- a trip as a calendar entry
+
+var TRIP = {
+  event: "EDC-8 Midwest Peer Exchange", location: "St. Louis, MO",
+  eventStart: "2026-10-15", departDate: "2026-10-14", returnDate: "2026-10-16",
+  confDates: "October 15, 2026, 8am-5pm",
+  meetingLink: "https://www.eventleaf.com/e/edc8midwest",
+};
+var HOTEL = {
+  name: "Hyatt Regency St. Louis at the Arch", checkIn: "2026-10-13",
+  checkOut: "2026-10-17", address: "St. Louis, MO", confirmation: "MV59BR3A",
+};
+
+var withHotel = F.calendarEntry(TRIP, HOTEL);
+check("the hotel is the location", withHotel.location, HOTEL.name);
+check("a booking's dates beat the trip's own", withHotel.start, "2026-10-13");
+check("at both ends", withHotel.end, "2026-10-17");
+check("the confirmation number is in the body",
+  /MV59BR3A/.test(withHotel.body), true);
+check("so is the meeting link", /eventleaf/.test(withHotel.body), true);
+
+var noHotel = F.calendarEntry(TRIP, null);
+check("without a booking, the travel dates are used", noHotel.start, "2026-10-14");
+check("and the destination is the location", noHotel.location, "St. Louis, MO");
+
+check("a trip with no dates yields nothing rather than today",
+  F.calendarEntry({ event: "X" }, null), null);
+check("an end before the start is corrected, not emitted",
+  F.calendarEntry({ event: "X", departDate: "2026-10-14", returnDate: "2026-10-10" }, null).end,
+  "2026-10-14");
+check("a single-day trip still produces an entry",
+  F.calendarEntry({ event: "X", eventStart: "2026-10-15" }, null).start, "2026-10-15");
+
+// An all-day appointment's end is EXCLUSIVE: without the shift the last day
+// of every trip silently drops off the calendar.
+check("shiftIso rolls a month", F.shiftIso("2026-10-31", 1), "2026-11-01");
+check("shiftIso rolls a year", F.shiftIso("2026-12-31", 1), "2027-01-01");
+check("shiftIso handles a leap day", F.shiftIso("2028-02-28", 1), "2028-02-29");
+check("shiftIso leaves rubbish alone", F.shiftIso("", 1), "");
+
 if (failures) {
   console.error("\n" + failures + " form test(s) FAILED");
   process.exit(1);

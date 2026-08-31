@@ -778,6 +778,35 @@ check("mapping them fills the rest", /Connected Corridors/.test(mapped.reason ||
 check("and the tick boxes", mapped.modeState, true);
 check("including the third party's", mapped.tp1Lodging, true);
 
+// ------------------------------------------------ hotel reservations
+
+var HOTELS = [
+  ["Hyatt Regency St. Louis at the Arch\nConfirmation number: MV59BR3A\n" +
+   "Check-in: Wednesday, October 14, 2026\nCheck-out: Friday, October 16, 2026\n" +
+   "315 Chestnut St, St. Louis, MO 63102",
+   { name: "Hyatt Regency St. Louis at the Arch", checkIn: "2026-10-14",
+     checkOut: "2026-10-16", address: "St. Louis, MO", confirmation: "MV59BR3A" }],
+  ["Your reservation at Hampton Inn Downtown is confirmed.\nArrival 05/03/2027\n" +
+   "Departure 05/07/2027\nNashville, TN",
+   { name: "Hampton Inn Downtown", checkIn: "2027-05-03", checkOut: "2027-05-07" }],
+  ["Holiday Inn Express & Suites Ames\nCheck-in 03/09/2027\nCheck-out 03/12/2027",
+   { name: "Holiday Inn Express & Suites Ames", checkIn: "2027-03-09", checkOut: "2027-03-12" }],
+];
+HOTELS.forEach(function (t, i) {
+  var got = M.hotelDetails(t[0]);
+  Object.keys(t[1]).forEach(function (k) {
+    check("hotel " + (i + 1) + " " + k, got[k], t[1][k]);
+  });
+});
+
+check("a name is read forward from the brand, past its abbreviations",
+  M.hotelDetails("Hyatt Regency St. Louis at the Arch\nCheck-in: 10/14/2026").name,
+  "Hyatt Regency St. Louis at the Arch");
+check("an end date before the start is refused",
+  M.hotelDetails("Marriott\nCheck-in 10/16/2026\nCheck-out 10/14/2026").checkOut, "");
+check("an email that is not a booking yields no dates",
+  M.hotelDetails("Thanks for registering for the conference.").checkIn, "");
+
 if (failures) {
   console.error("\n" + failures + " mail-parsing test(s) failed.");
   process.exit(1);

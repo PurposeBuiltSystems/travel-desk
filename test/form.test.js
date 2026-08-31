@@ -389,12 +389,18 @@ check("an end before the start is corrected, not emitted",
 check("a single-day trip still produces an entry",
   F.calendarEntry({ event: "X", eventStart: "2026-10-15" }, null).start, "2026-10-15");
 
-// An all-day appointment's end is EXCLUSIVE: without the shift the last day
-// of every trip silently drops off the calendar.
-check("shiftIso rolls a month", F.shiftIso("2026-10-31", 1), "2026-11-01");
-check("shiftIso rolls a year", F.shiftIso("2026-12-31", 1), "2027-01-01");
-check("shiftIso handles a leap day", F.shiftIso("2028-02-28", 1), "2028-02-29");
-check("shiftIso leaves rubbish alone", F.shiftIso("", 1), "");
+// The appointment is TIMED - AppointmentForm has no all-day flag - so the end
+// is literal. This is what the pane hands Outlook.
+// check() in this file compares with ===, so arrays never match; joined.
+function span(e) {
+  return e.start + "T00:00:00 -> " + e.end + "T23:59:00";
+}
+check("a trip ends on the day it returns, not the day after",
+  span(F.calendarEntry({ event: "X", departDate: "2026-10-14", returnDate: "2026-10-16" }, null)),
+  "2026-10-14T00:00:00 -> 2026-10-16T23:59:00");
+check("a single-day trip is not zero length",
+  span(F.calendarEntry({ event: "X", eventStart: "2026-10-15" }, null)),
+  "2026-10-15T00:00:00 -> 2026-10-15T23:59:00");
 
 if (failures) {
   console.error("\n" + failures + " form test(s) FAILED");

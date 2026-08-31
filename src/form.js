@@ -691,17 +691,6 @@
     };
   }
 
-  /** ISO date plus n days. */
-  function shiftIso(isoDate, n) {
-    var p = String(isoDate || "").split("-");
-    if (p.length !== 3) { return isoDate; }
-    var d = new Date(+p[0], +p[1] - 1, +p[2]);
-    if (isNaN(d.getTime())) { return isoDate; }
-    d.setDate(d.getDate() + n);
-    var mm = d.getMonth() + 1, dd = d.getDate();
-    return d.getFullYear() + "-" + (mm < 10 ? "0" : "") + mm + "-" + (dd < 10 ? "0" : "") + dd;
-  }
-
   var api = {
     pickPlanner: pickPlanner,
     STATUS: STATUS,
@@ -723,7 +712,6 @@
     matchBooking: matchBooking,
     BOOKING_LOOKBACK_DAYS: LOOKBACK_DAYS,
     calendarEntry: calendarEntry,
-    shiftIso: shiftIso,
     slimModel: slimModel,
     copyForNewTrip: copyForNewTrip,
     computeTotals: computeTotals,

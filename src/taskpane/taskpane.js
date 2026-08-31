@@ -2464,10 +2464,13 @@
         requiredAttendees: [],
         subject: entry.subject,
         location: entry.location,
-        // All-day across the travel dates: end is exclusive, so a trip that
-        // returns on the 16th has to end on the 17th or the last day is lost.
+        // A TIMED appointment, not an all-day one - AppointmentForm has no
+        // all-day flag, so the end is literal rather than exclusive. Shifting
+        // it by a day, as an all-day event would need, made every trip run a
+        // day past the return. Midnight to 23:59 covers the whole span and
+        // ends on the right date.
         start: new Date(entry.start + "T00:00:00"),
-        end: new Date(TravelForm.shiftIso(entry.end, 1) + "T00:00:00"),
+        end: new Date(entry.end + "T23:59:00"),
         body: entry.body,
       });
       setStatus("info", "Appointment opened" +

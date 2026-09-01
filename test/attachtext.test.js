@@ -286,6 +286,19 @@ function latin1FromU8(u8) { return Buffer.from(u8).toString("latin1"); }
   ], "form"));
   has("UTF-16BE field values decode", utf16.text, "EDC-8");
 
+  // Nearly every PDF compresses its content, so a browser without
+  // DecompressionStream can read none of them. Blaming the FILE for that
+  // sends somebody looking for a scanner that does not exist.
+  var realDS = global.DecompressionStream;
+  delete global.DecompressionStream;
+  var noInflate = await A.attachmentText("agenda.pdf", makePdf(["The peer exchange is held October 6-8, 2026 in Kansas City, Missouri."], true));
+  check("without DecompressionStream a compressed PDF yields nothing", noInflate.text, "");
+  has("and the browser is blamed, not the file", noInflate.note, "can't decompress");
+  global.DecompressionStream = realDS;
+
+  var withInflate = await A.attachmentText("agenda.pdf", makePdf(["The peer exchange is held October 6-8, 2026 in Kansas City, Missouri."], true));
+  has("with it, the same file reads fine", withInflate.text, "October 6-8, 2026");
+
   check("prose passes the readability gate",
     A.looksLikeProse("The conference is held in Kansas City, Missouri on October 6 through 8."), true);
   check("a wall of symbols does not",

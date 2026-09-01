@@ -653,7 +653,16 @@
       if (e === "pptx") { res.text = await pptxText(bytes); return res; }
       if (e === "pdf") {
         res.text = await pdfText(bytes);
-        if (!res.text) { res.note = "no readable text (scanned image, or an unsupported font)"; }
+        if (!res.text) {
+          // These are different problems with different answers, and saying
+          // the wrong one sends somebody looking for a scanner. Almost every
+          // PDF compresses its content, so without DecompressionStream NONE
+          // of them can be read - which is a property of the browser, not of
+          // the file in front of them.
+          res.note = (typeof DecompressionStream !== "function")
+            ? "this version of Outlook can't decompress PDFs \u2014 the email itself was still read"
+            : "no readable text (scanned image, or an unsupported font)";
+        }
         return res;
       }
       res.note = SKIP_NOTE[e] ? "skipped — " + SKIP_NOTE[e] : "skipped — ." + (e || "unknown") + " isn't readable";

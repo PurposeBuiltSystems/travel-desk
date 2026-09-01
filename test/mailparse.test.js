@@ -718,6 +718,47 @@ check("an event that has already happened scores lower than one ahead",
                        from: "x@example.org" }, { todayIso: "2026-08-29" }).score,
   true);
 
+// ------------------- labels seen on OTHER agencies' real forms
+//
+// Taken from the actual travel-authorization PDFs published by Connecticut,
+// Vermont and Indiana. Loose matching has to survive these without claiming
+// things it should not.
+
+check("a short label does not claim a much longer one",
+  M.looseMatch("Meals ProvidedComputation", "Meals"), false);
+check("nor does Location claim a storage field",
+  M.looseMatch("Location of Vehicle Storage", "Location"), false);
+check("but a substantial label still tolerates its parenthetical",
+  M.looseMatch("Cost of Travel Mode miles, estmated fight cost", "Cost of Travel Mode"), true);
+check("and an exact label is always a match",
+  M.looseMatch("Departure Date", "Departure Date"), true);
+check("Vermont's shouting is matched",
+  M.looseMatch("DEPARTURE DATE", "Departure Date"), true);
+check("a two-letter label never prefix-matches anything",
+  M.looseMatch("ID Number Of Traveler", "ID"), false);
+
+// A blank form is exactly when somebody scans it to teach the wording, so its
+// field names must be discoverable even though nothing is filled in.
+var BLANK_NAMED = [
+  "TRAVEL AUTHORIZATION",
+  "EMPLOYEE ID:",
+  "DEPARTURE DATE:",
+  "RETURN DATE:",
+  "DESTINATION (City, State):",
+  "Air_Cost:",
+  "Mileage_Cost:",
+  "RegFee_Cost:",
+  "EXPLANATION of TRAVEL:",
+].join("\n");
+var blankLabels = M.discoverLabels(BLANK_NAMED);
+check("a blank form still yields its labels", blankLabels.length >= 8, true);
+check("and the ones it knows are pre-assigned",
+  blankLabels.filter(function (x) { return x.field === "departDate"; }).length, 1);
+check("while an unfamiliar one is offered for mapping",
+  blankLabels.filter(function (x) { return x.label === "Air_Cost" && !x.known; }).length, 1);
+check("and nothing is extracted from a form with no values",
+  JSON.stringify(M.formFields(BLANK_NAMED)), "{}");
+
 // ------------------------- a real filled form, as it really extracts
 //
 // Not an idealised version: the field names in this file are misspelled

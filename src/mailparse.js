@@ -1096,7 +1096,11 @@
   function looseMatch(observed, expected) {
     var a = norm(observed), b = norm(expected);
     if (!a || !b) { return false; }
-    if (a.indexOf(b) === 0) { return true; }
+    // A prefix match is only evidence if the label is a decent share of what
+    // was observed. Without that, the five-letter "Meals" claims
+    // "Meals ProvidedComputation", and "Location" claims "Location of Vehicle
+    // Storage" - both real field names on real state forms.
+    if (a.indexOf(b) === 0) { return b.length >= 4 && a.length <= b.length * 2.5; }
     var i = 0, skipped = 0;
     for (var j = 0; j < b.length; j++) {
       if (i < a.length && a.charAt(i) === b.charAt(j)) { i++; }

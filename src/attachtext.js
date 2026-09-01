@@ -383,7 +383,15 @@
     var out = [];
     order.forEach(function (n) {
       var f = byNum[n];
-      if (!f.value) { return; }
+      // A field with no value still has a NAME, and on a blank form the names
+      // are all there is. They are emitted as a bare "Label:" - enough for
+      // label discovery to offer them, and ignored by extraction, which
+      // requires a value with a letter or digit in it.
+      if (!f.value) {
+        var bare = f.tip || f.name;
+        if (bare) { out.push({ label: bare, value: "" }); }
+        return;
+      }
       var parts = [f.name], p = f.parent, guard = 0;
       while (p && byNum[p] && guard++ < 8) { parts.unshift(byNum[p].name); p = byNum[p].parent; }
       var label = f.tip || parts.filter(Boolean).join(" ");
@@ -591,7 +599,7 @@
     var filled = acroFormFields(raw, objs);
     if (filled.length) {
       text += (text ? "\n\n" : "") + filled.map(function (f) {
-        return f.label + ": " + f.value;
+        return f.label + ":" + (f.value ? " " + f.value : "");
       }).join("\n");
     }
     return text;

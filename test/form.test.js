@@ -2,14 +2,8 @@
 "use strict";
 var F = require("../src/form.js");
 
-var failures = 0;
-function check(label, actual, expected) {
-  var ok = actual === expected;
-  if (!ok) {
-    failures++;
-    console.error("FAIL  " + label + "\n  expected: " + JSON.stringify(expected) + "\n  actual:   " + JSON.stringify(actual));
-  }
-}
+var T = require("./assert.js").suite("form");
+var check = T.check, truthy = T.truthy;
 
 var model = {
   name: "Matt Miller",
@@ -402,8 +396,4 @@ check("a single-day trip is not zero length",
   span(F.calendarEntry({ event: "X", eventStart: "2026-10-15" }, null)),
   "2026-10-15T00:00:00 -> 2026-10-15T23:59:00");
 
-if (failures) {
-  console.error("\n" + failures + " form test(s) FAILED");
-  process.exit(1);
-}
-console.log("All Travel Desk form tests passed.");
+T.done("All Travel Desk form tests passed.");

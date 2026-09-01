@@ -3,13 +3,8 @@
 var C = require("../src/coord.js");
 var F = require("../src/form.js");
 
-var failures = 0;
-function check(label, actual, expected) {
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    failures++;
-    console.error("FAIL  " + label + "\n  expected: " + JSON.stringify(expected) + "\n  actual:   " + JSON.stringify(actual));
-  }
-}
+var T = require("./assert.js").suite("coordinator");
+var check = T.check, truthy = T.truthy;
 
 var H = F.DEFAULT_PLANNER_HEADERS;
 var NOW = new Date(2026, 7, 3, 9, 0, 0); // Mon 2026-08-03
@@ -308,8 +303,4 @@ check("invite stays locked without an address",
 check("a planner entry with no resolved reference does not count",
   shape({ coordEmail: "k@x.gov", planners: { SFY27: { wbUrl: "https://x" } } }), "done todo lock");
 
-if (failures) {
-  console.error("\n" + failures + " coordinator test(s) FAILED");
-  process.exit(1);
-}
-console.log("All coordinator tests passed.");
+T.done("All coordinator tests passed.");

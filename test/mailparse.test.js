@@ -2,17 +2,8 @@
 "use strict";
 var M = require("../src/mailparse.js");
 
-var failures = 0;
-function check(label, actual, expected) {
-  var a = JSON.stringify(actual), e = JSON.stringify(expected);
-  if (a !== e) {
-    failures++;
-    console.error("FAIL  " + label + "\n  expected: " + e + "\n  actual:   " + a);
-  }
-}
-function truthy(label, v) {
-  if (!v) { failures++; console.error("FAIL  " + label + "\n  expected truthy, got: " + JSON.stringify(v)); }
-}
+var T = require("./assert.js").suite("mail-parsing");
+var check = T.check, truthy = T.truthy;
 
 // ---------------------------------------------------------------- subject
 
@@ -807,8 +798,4 @@ check("an end date before the start is refused",
 check("an email that is not a booking yields no dates",
   M.hotelDetails("Thanks for registering for the conference.").checkIn, "");
 
-if (failures) {
-  console.error("\n" + failures + " mail-parsing test(s) failed.");
-  process.exit(1);
-}
-console.log("All Travel Desk mail-parsing tests passed.");
+T.done("All Travel Desk mail-parsing tests passed.");

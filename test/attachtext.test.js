@@ -10,21 +10,8 @@ global.JSZip = require("jszip");
 var zlib = require("zlib");
 var A = require("../src/attachtext.js");
 
-var failures = 0;
-function check(label, actual, expected) {
-  var a = JSON.stringify(actual), e = JSON.stringify(expected);
-  if (a !== e) {
-    failures++;
-    console.error("FAIL  " + label + "\n  expected: " + e + "\n  actual:   " + a);
-  }
-}
-function has(label, hay, needle) {
-  if (String(hay).indexOf(needle) < 0) {
-    failures++;
-    console.error("FAIL  " + label + "\n  expected to contain: " + needle +
-      "\n  got: " + JSON.stringify(String(hay).slice(0, 400)));
-  }
-}
+var T = require("./assert.js").suite("attachment");
+var check = T.check, truthy = T.truthy, has = T.has;
 
 function bytes(buf) { return Uint8Array.from(buf); }
 function latin1FromU8(u8) { return Buffer.from(u8).toString("latin1"); }
@@ -304,11 +291,7 @@ function latin1FromU8(u8) { return Buffer.from(u8).toString("latin1"); }
   check("a wall of symbols does not",
     A.looksLikeProse(Array(200).join("")), false);
 
-  if (failures) {
-    console.error("\n" + failures + " attachment test(s) failed.");
-    process.exit(1);
-  }
-  console.log("All Travel Desk attachment tests passed.");
+  T.done("All Travel Desk attachment tests passed.");
 })().catch(function (e) {
   console.error("attachment tests threw:", e);
   process.exit(1);

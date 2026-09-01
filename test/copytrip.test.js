@@ -57,12 +57,8 @@ var harness = new Function("document", "TravelForm", [
   "return { model: model, applyModel: applyModel };",
 ].join("\n"))(D, TravelForm);
 
-var failures = 0, passes = 0;
-function check(label, actual, expected) {
-  var a = JSON.stringify(actual), e = JSON.stringify(expected);
-  if (a !== e) { failures++; console.error("FAIL  " + label + "\n  expected: " + e + "\n  actual:   " + a); }
-  else { passes++; }
-}
+var T = require("./assert.js").suite("copy-trip");
+var check = T.check, truthy = T.truthy;
 
 /* Every box a person could fill, filled with something distinguishable. */
 var FILLED = {
@@ -158,8 +154,4 @@ check("a third party with no name is dropped",
 check("slimming a filled request is a real saving",
   TravelForm.slimModel(FILLED).costs.mealsD, undefined);
 
-if (failures) {
-  console.error("\n" + failures + " copy-trip test(s) failed.");
-  process.exit(1);
-}
-console.log("All " + passes + " copy-trip checks passed against the real pane markup.");
+T.done("All " + T.passes + " copy-trip checks passed against the real pane markup.");

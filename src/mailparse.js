@@ -1170,7 +1170,7 @@
       // (where the label is followed by an empty underscore rule) AND the
       // typed field values appended after it. Stopping at the first match
       // meant reading the blank rendering of a form somebody had filled in.
-      var rx = new RegExp(looseLabel(spec.label) + PAREN + "[:\\-]\\s*([\\s\\S]{0,200}?)(?=" +
+      var rx = new RegExp(looseLabel(spec.label) + PAREN + "[:\\-][ \\t]*([\\s\\S]{0,200}?)(?=" +
         STOP + "|\\n|$)", "gi");
       var m;
       while ((m = rx.exec(t))) {
@@ -1215,7 +1215,7 @@
         var n = idx + 1;
         TP_TEXT.forEach(function (spec) {
           if (!scoped && spec.label === "Name") { return; }
-          var rx = new RegExp(looseLabel(spec.label) + PAREN + "[:\\-]\\s*([\\s\\S]{0,200}?)(?=" +
+          var rx = new RegExp(looseLabel(spec.label) + PAREN + "[:\\-][ \\t]*([\\s\\S]{0,200}?)(?=" +
             TP_STOP + "|\\n|$)", "gi");
           var vals = [], m;
           while (vals.length < 2 && (m = rx.exec(sec))) {

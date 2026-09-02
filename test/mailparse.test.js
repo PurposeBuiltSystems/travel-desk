@@ -718,6 +718,25 @@ check("an event that has already happened scores lower than one ahead",
                        from: "x@example.org" }, { todayIso: "2026-08-29" }).score,
   true);
 
+// A label with an EMPTY value must not reach across the line break and take
+// the next label as its answer. Utah State's form has "Departure Location:"
+// directly above "Destination:", and a blank form reported a destination of
+// "Destination" - a value invented out of the layout.
+check("an empty field does not swallow the label below it",
+  JSON.stringify(M.formFields([
+    "Travel Authorization Request",
+    "Departure Location:",
+    "Destination:",
+    "Departure Date:",
+    "Return Date:",
+  ].join("\n"))), "{}");
+check("but a value on the SAME line is still read",
+  M.formFields([
+    "Name of Conference: Midwest Summit",
+    "Location: Omaha, NE",
+    "Departure Date: 03/09/2027",
+  ].join("\n")).location, "Omaha, NE");
+
 // ------------------- labels seen on OTHER agencies' real forms
 //
 // Taken from the actual travel-authorization PDFs published by Connecticut,

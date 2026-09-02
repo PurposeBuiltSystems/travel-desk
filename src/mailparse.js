@@ -1256,7 +1256,9 @@
     // --- meals included with registration ---
     // Printed as "(meals included? How many?) ___B___L___D"; a fillable copy
     // may instead carry three separate fields.
-    var mealSeg = /meals\s+included[^)\n]{0,30}\)?\s*([\s\S]{0,60})/i.exec(t);
+    // Lazy: greedy, the "up to 30 characters of parenthetical" swallowed
+    // ": 1B 1L 0D" itself and the capture came back empty.
+    var mealSeg = /meals\s+included[^)\n]{0,30}?\)?\s*[:\-]?\s*([\s\S]{0,60})/i.exec(t);
     [["B", "cMealsB", "Breakfast"], ["L", "cMealsL", "Lunch"], ["D", "cMealsD", "Dinner"]]
       .forEach(function (p) {
         if (mealSeg) {

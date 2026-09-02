@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Travel Authorization Form — template</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", Arial, sans-serif; color: #242424;
+         max-width: 46rem; margin: 2rem auto; padding: 0 1.25rem; line-height: 1.5; }
+  h1 { color: #0f6cbd; font-size: 1.5rem; margin-bottom: .1rem; }
+  h2 { font-size: 1rem; color: #0f6cbd; margin: 1.6rem 0 .4rem;
+       border-bottom: 2px solid #0f6cbd; padding-bottom: 2px; }
+  .sub { color: #616161; margin-top: 0; }
+  .note { background: #eff6fc; border-radius: 8px; padding: 12px 16px; margin: 14px 0; font-size: .92em; }
+  .row { display: flex; align-items: baseline; gap: .4rem; margin: .45rem 0; }
+  .row label { flex: 0 0 auto; font-weight: 600; }
+  .row input[type=text] { flex: 1; min-width: 4rem; border: 0; border-bottom: 1px solid #999;
+         font: inherit; padding: 1px 3px; background: transparent; color: inherit; }
+  .row input:focus { outline: 0; border-bottom-color: #0f6cbd; background: #f2f8fd; }
+  textarea { width: 100%; font: inherit; border: 1px solid #999; border-radius: 4px; padding: 4px 6px; }
+  .checks { margin: .3rem 0 .6rem; }
+  .checks label { margin-right: 1.4rem; font-weight: 600; }
+  .half { display: flex; gap: 1.2rem; flex-wrap: wrap; }
+  .half > .row { flex: 1 1 15rem; }
+  .noprint button { font: inherit; padding: 7px 14px; border-radius: 7px; border: 1px solid #0f6cbd;
+         background: #0f6cbd; color: #fff; font-weight: 600; cursor: pointer; }
+  @media print {
+    .noprint { display: none; }
+    body { margin: .4in; max-width: none; font-size: 10.5pt; }
+    .note { display: none; }
+    h2 { margin-top: .8rem; }
+    .row input[type=text] { border-bottom: 1px solid #666; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Travel Authorization Form</h1>
+<p class="sub">Template · every label here is one Travel Desk already knows.</p>
+
+<div class="note noprint">
+  <b>Why this exists.</b> Travel Desk reads a completed authorization form and fills a
+  request from it — but only as well as the form is labelled. Forms whose fields are named
+  <code>FillText1</code> and <code>Text5</code> cannot be read by anything.
+  Every label below matches Travel Desk's own, so a form filled out on this template is read
+  in full with nothing to configure.
+  <p style="margin:.5rem 0 0">Fill it in here and <b>Print → Save as PDF</b>, or print it blank
+  and complete it by hand. Attach the PDF to an email, open Travel Desk, and click
+  <b>Fill from this email</b>.</p>
+  <p style="margin:.5rem 0 0"><button onclick="window.print()">Print / Save as PDF</button></p>
+</div>
+
+<h2>Traveler</h2>
+<div class="row"><label for="f1">Name &amp; Cost Center:</label><input type="text" id="f1" /></div>
+<div class="row"><label for="f2">Other Staff Attending:</label><input type="text" id="f2" /></div>
+
+<h2>Event</h2>
+<div class="row"><label for="f3">Name of Conference:</label><input type="text" id="f3" /></div>
+<div class="row"><label for="f4">Location:</label><input type="text" id="f4" /></div>
+<div class="row"><label for="f5">Conference Dates &amp; Times:</label><input type="text" id="f5" /></div>
+<div class="half">
+  <div class="row"><label for="f6">Departure Date:</label><input type="text" id="f6" /></div>
+  <div class="row"><label for="f7">Return Date:</label><input type="text" id="f7" /></div>
+</div>
+<p style="margin:.6rem 0 .2rem"><b>Reason for Travel:</b> (describe the event and why you should attend)</p>
+<textarea id="f8" rows="3"></textarea>
+
+<h2>Travel &amp; costs</h2>
+<div class="checks">
+  <label><input type="checkbox" id="c1" /> Personal Vehicle</label>
+  <label><input type="checkbox" id="c2" /> State Vehicle</label>
+  <label><input type="checkbox" id="c3" /> Commercial Air</label>
+</div>
+<div class="half">
+  <div class="row"><label for="f9">Cost of Travel Mode:</label><input type="text" id="f9" /></div>
+  <div class="row"><label for="f10">Luggage Fees:</label><input type="text" id="f10" /></div>
+</div>
+<div class="half">
+  <div class="row"><label for="f11">Parking:</label><input type="text" id="f11" /></div>
+  <div class="row"><label for="f12">Taxi/Uber Fees:</label><input type="text" id="f12" /></div>
+</div>
+<div class="row"><label for="f13">Lodging:</label><input type="text" id="f13" style="max-width:5rem" />
+  <span>nights @ $</span><input type="text" id="f14" style="max-width:7rem" /></div>
+<div class="half">
+  <div class="row"><label for="f15">Registration Fee:</label><input type="text" id="f15" /></div>
+  <div class="row"><label for="f16">Additional Fees:</label><input type="text" id="f16" /></div>
+</div>
+<div class="row"><label for="f17">Meals included:</label><input type="text" id="f17"
+  placeholder="e.g. 1B 1L 0D" /></div>
+
+<h2>Third-party reimbursement</h2>
+<p class="sub" style="font-size:.9em;margin:.2rem 0 .5rem">Anyone other than your own
+  organization paying part of this trip.</p>
+<div class="row"><label for="f18">Name:</label><input type="text" id="f18" /></div>
+<div class="row"><label for="f19">Project Number:</label><input type="text" id="f19" /></div>
+<div class="row"><label for="f20">Maximum Reimbursement Amount:</label><input type="text" id="f20" /></div>
+<div class="checks">
+  <label><input type="checkbox" id="c4" /> Registration Fees</label>
+  <label><input type="checkbox" id="c5" /> Lodging/Hotel Costs</label>
+  <label><input type="checkbox" id="c6" /> Airfare/Luggage Fees</label>
+  <label><input type="checkbox" id="c7" /> Meals</label>
+  <label><input type="checkbox" id="c8" /> Ground Transportation Costs</label>
+</div>
+<div class="row"><label for="f21">Reimbursement Notes:</label><input type="text" id="f21" /></div>
+
+<h2>Approval</h2>
+<div class="half">
+  <div class="row"><label>Approved by:</label><input type="text" /></div>
+  <div class="row"><label>Date:</label><input type="text" /></div>
+</div>
+
+<script>
+/*
+ * Turn each row into ONE string before printing.
+ *
+ * A browser lays a label and its input out as separate text runs, and a PDF
+ * records them as separately positioned - so the saved file has the label on
+ * one line and the answer on the next, and nothing reading it can tell which
+ * answer belongs to which label. Printing "Label: value" as a single run
+ * removes the guesswork entirely, which is the whole reason this template
+ * exists.
+ */
+(function () {
+  var mirrored = false;
+
+  function beforePrint() {
+    if (mirrored) { return; }
+    mirrored = true;
+
+    document.querySelectorAll(".row").forEach(function (row) {
+      var parts = [];
+      row.childNodes.forEach(function (n) {
+        if (n.nodeType === 3) { parts.push(n.nodeValue); return; }
+        if (n.tagName === "LABEL" || n.tagName === "SPAN") { parts.push(n.textContent); return; }
+        if (n.tagName === "INPUT") { parts.push(n.value); return; }
+      });
+      var text = parts.join(" ").replace(/\s+/g, " ").replace(/\s+:/g, ":").trim();
+      var line = document.createElement("div");
+      line.className = "printed-line";
+      line.textContent = text;
+      row.dataset.hidden = "1";
+      row.style.display = "none";
+      row.parentNode.insertBefore(line, row.nextSibling);
+    });
+
+    // A tick has to survive as words; a drawn box records nothing.
+    document.querySelectorAll(".checks").forEach(function (group) {
+      var on = [];
+      group.querySelectorAll("input[type=checkbox]").forEach(function (c) {
+        if (c.checked) { on.push(c.parentNode.textContent.trim() + ": checked"); }
+      });
+      if (!on.length) { return; }
+      // Visible, not hidden off-page: a browser leaves absolutely-positioned
+      // off-screen text out of the PDF entirely, so the ticks vanished. And on
+      // a printed form "State Vehicle: checked" is what a reader wants anyway.
+      var line = document.createElement("div");
+      line.className = "printed-line";
+      line.textContent = on.join("   ");
+      group.dataset.hidden = "1";
+      group.style.display = "none";
+      group.parentNode.insertBefore(line, group.nextSibling);
+    });
+
+    var reason = document.getElementById("f8");
+    if (reason && reason.value) {
+      var r = document.createElement("div");
+      r.className = "printed-line";
+      r.textContent = "Reason for Travel: " + reason.value.replace(/\s+/g, " ");
+      reason.dataset.hidden = "1";
+      reason.style.display = "none";
+      reason.parentNode.insertBefore(r, reason.nextSibling);
+    }
+  }
+
+  function afterPrint() {
+    mirrored = false;
+    document.querySelectorAll(".printed-line").forEach(function (n) { n.remove(); });
+    document.querySelectorAll("[data-hidden]").forEach(function (n) {
+      n.style.display = ""; delete n.dataset.hidden;
+    });
+  }
+
+  window.addEventListener("beforeprint", beforePrint);
+  window.addEventListener("afterprint", afterPrint);
+})();
+</script>
+</body>
+</html>

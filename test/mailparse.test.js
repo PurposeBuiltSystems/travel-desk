@@ -737,6 +737,52 @@ check("but a value on the SAME line is still read",
     "Departure Date: 03/09/2027",
   ].join("\n")).location, "Omaha, NE");
 
+// The template, as it reads once printed to PDF. The point of shipping a
+// template is that it needs no configuring, so this has to stay true.
+var TEMPLATE_PRINTED = [
+  "Travel Authorization Form",
+  "Name & Cost Center: Matthew Miller, 300000",
+  "Other Staff Attending: Cedric Wilkinson, Deanne Popp",
+  "Name of Conference: EDC-8 Midwest Peer Exchange",
+  "Location: St. Louis, MO",
+  "Conference Dates & Times: October 15, 2026, 8am-5pm",
+  "Departure Date: 10/14/2026",
+  "Return Date: 10/16/2026",
+  "State Vehicle: checked",
+  "Cost of Travel Mode: 770",
+  "Luggage Fees: 65",
+  "Parking: 40",
+  "Taxi/Uber Fees: 32",
+  "Lodging: 2 nights @ $ 176.90",
+  "Registration Fee: 250",
+  "Additional Fees: 85 conference banquet",
+  "Meals included: 1B 1L 0D",
+  "Name: Federal Highway Administration",
+  "Project Number: EDC8-IA-2026",
+  "Maximum Reimbursement Amount: 900",
+  "Lodging/Hotel Costs: checked   Meals: checked",
+  "Reimbursement Notes: Invitational travel, per diem rate only",
+].join("\n");
+
+var tpl = M.formFields(TEMPLATE_PRINTED);
+[
+  ["name", "Matthew Miller"], ["costCenter", "300000"],
+  ["otherStaff", "Cedric Wilkinson, Deanne Popp"],
+  ["event", "EDC-8 Midwest Peer Exchange"], ["location", "St. Louis, MO"],
+  ["confDates", "October 15, 2026, 8am-5pm"],
+  ["departDate", "2026-10-14"], ["returnDate", "2026-10-16"],
+  ["modeState", true], ["cTravelMode", 770], ["cLuggage", 65], ["cParking", 40],
+  ["cTaxi", 32], ["cLodgingNights", 2], ["cLodgingRate", 176.9],
+  ["cRegistration", 250], ["cAdditional", 85], ["cMealsB", 1], ["cMealsL", 1],
+  ["tp1Name", "Federal Highway Administration"], ["tp1Project", "EDC8-IA-2026"],
+  ["tp1Max", 900], ["tp1Lodging", true], ["tp1Meals", true],
+  ["tp1Notes", "Invitational travel, per diem rate only"],
+].forEach(function (p) { check("template round-trip: " + p[0], tpl[p[0]], p[1]); });
+
+check("a meal count survives its own label's colon",
+  M.formFields("Name of Conference: X\nLocation: Ames, IA\nDeparture Date: 1/2/2027\n" +
+    "Meals included: 2B 1L 0D").cMealsB, 2);
+
 // ------------------- labels seen on OTHER agencies' real forms
 //
 // Taken from the actual travel-authorization PDFs published by Connecticut,

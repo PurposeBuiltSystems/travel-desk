@@ -223,23 +223,54 @@
    */
   function opsToText(content, fonts) {
     var out = "", line = "";
-    var rx = /\((?:\\[\s\S]|[^\\()])*\)|<[0-9A-Fa-f\s]*>|\/([A-Za-z0-9#+._-]+)\s+[\d.]+\s+Tf\b|\bT[Jj]\b|\bT[dDm*]\b|\bTD\b|'|"|\bBT\b|\bET\b/g;
-    var m, pending = [], font = null;
+    /*
+     * A newline goes in when the text moves DOWN, not on every positioning
+     * operator.
+     *
+     * Td/TD/Tm are used for horizontal movement too - kerning, tabs, moving to
+     * the next column - and real generators emit them constantly. Breaking on
+     * all of them shattered every visual line into fragments: "Travel" arrived
+     * as "T" then "ravel", and a label was never on the same line as its value,
+     * which is the one thing the form reader depends on.
+     */
+    var rx = /\((?:\\[\s\S]|[^\\()])*\)|<[0-9A-Fa-f\s]*>|-?[\d.]+|\/([A-Za-z0-9#+._-]+)\s+[\d.]+\s+Tf\b|\bT[Jj]\b|\bTD\b|\bTd\b|\bTm\b|\bT\*|'|"|\bBT\b|\bET\b/g;
+    var m, pending = [], nums = [], font = null, lastY = null;
     function decode(bytes) { return font ? font(bytes) : bytes; }
+    function newline() { if (line) { out += line + "\n"; line = ""; } }
+
     while ((m = rx.exec(content))) {
       var tok = m[0];
-      if (m[1] !== undefined) { font = (fonts && fonts[m[1]]) || null; continue; }
-      if (tok.charAt(0) === "(") { pending.push(decode(unescapePdfString(tok.slice(1, -1)))); }
-      else if (tok.charAt(0) === "<" && tok.charAt(1) !== "<") { pending.push(decode(hexPdfString(tok.slice(1, -1)))); }
-      else if (tok === "Tj" || tok === "TJ" || tok === "'" || tok === '"') {
-        line += pending.join(""); pending = [];
-        if (tok === "'" || tok === '"') { out += line + "\n"; line = ""; }
-      } else if (tok === "Td" || tok === "TD" || tok === "T*" || tok === "ET") {
-        pending = [];
-        if (line) { out += line + "\n"; line = ""; }
-      } else { pending = []; }
+      if (m[1] !== undefined) { font = (fonts && fonts[m[1]]) || null; nums = []; continue; }
+      if (/^-?[\d.]+$/.test(tok)) { nums.push(parseFloat(tok)); continue; }
+
+      if (tok.charAt(0) === "(") { pending.push(decode(unescapePdfString(tok.slice(1, -1)))); nums = []; continue; }
+      if (tok.charAt(0) === "<" && tok.charAt(1) !== "<") { pending.push(decode(hexPdfString(tok.slice(1, -1)))); nums = []; continue; }
+
+      if (tok === "Tj" || tok === "TJ" || tok === "'" || tok === '"') {
+        if (tok === "'" || tok === '"') { newline(); }
+        line += pending.join("");
+        pending = []; nums = [];
+        continue;
+      }
+      if (tok === "Td" || tok === "TD") {
+        // tx ty Td - only a non-zero ty is a new line.
+        var ty = nums.length >= 2 ? nums[nums.length - 1] : 0;
+        if (ty) { newline(); }
+        pending = []; nums = [];
+        continue;
+      }
+      if (tok === "Tm") {
+        // a b c d e f Tm - f is the vertical translation.
+        var y = nums.length >= 6 ? nums[nums.length - 1] : null;
+        if (y !== null && lastY !== null && Math.abs(y - lastY) > 0.5) { newline(); }
+        if (y !== null) { lastY = y; }
+        pending = []; nums = [];
+        continue;
+      }
+      if (tok === "T*" || tok === "ET") { newline(); pending = []; nums = []; continue; }
+      pending = []; nums = [];
     }
-    if (line) { out += line + "\n"; }
+    newline();
     return out;
   }
 

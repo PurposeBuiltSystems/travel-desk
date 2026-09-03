@@ -691,6 +691,29 @@
     };
   }
 
+  /**
+   * Addresses out of whatever the coordinator pasted.
+   *
+   * This is a To: line copied out of Outlook as often as it is a typed list,
+   * so it arrives as "Jane Doe <jane@x.gov>; Bob Roe <bob@x.gov>", or comma
+   * separated, or one per line, or all three at once. Deduplicated because
+   * pasting the same person twice sends them two invitations and makes the
+   * second look like a correction.
+   */
+  function extractEmails(text) {
+    var out = [], seen = {};
+    var rx = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+    var m;
+    while ((m = rx.exec(String(text || "")))) {
+      var addr = m[0].replace(/[.,;:>)\]]+$/, "");
+      var key = addr.toLowerCase();
+      if (seen[key]) { continue; }
+      seen[key] = 1;
+      out.push(addr);
+    }
+    return out;
+  }
+
   var api = {
     pickPlanner: pickPlanner,
     STATUS: STATUS,
@@ -704,6 +727,7 @@
     extractSetupCode: extractSetupCode,
     pickInvite: pickInvite,
     DEFAULT_PLANNER_HEADERS: DEFAULT_PLANNER_HEADERS,
+    extractEmails: extractEmails,
     parseTravelers: parseTravelers,
     plannerRows: plannerRows,
     receivables: receivables,

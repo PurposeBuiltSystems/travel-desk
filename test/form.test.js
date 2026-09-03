@@ -396,4 +396,17 @@ check("a single-day trip is not zero length",
   span(F.calendarEntry({ event: "X", eventStart: "2026-10-15" }, null)),
   "2026-10-15T00:00:00 -> 2026-10-15T23:59:00");
 
+// The coordinator pastes a To: line as often as a typed list, and the first
+// statement of sendInvites depends on this.
+check("semicolon separated", F.extractEmails("jane@x.gov; bob@x.gov").join(","), "jane@x.gov,bob@x.gov");
+check("an Outlook To: line", F.extractEmails("Doe, Jane <jane.doe@iowadot.us>; Roe, Bob <bob.roe@iowadot.us>").join(","),
+  "jane.doe@iowadot.us,bob.roe@iowadot.us");
+check("one per line", F.extractEmails("a@x.gov\nb@x.gov\nc@x.gov").length, 3);
+check("the same person twice is one invitation",
+  F.extractEmails("jane@x.gov, jane@X.GOV").length, 1);
+check("a trailing full stop is not part of the address",
+  F.extractEmails("Send it to jane@x.gov.").join(","), "jane@x.gov");
+check("nothing to send to", F.extractEmails("no addresses here").length, 0);
+check("empty input", F.extractEmails("").length, 0);
+
 T.done("All Travel Desk form tests passed.");

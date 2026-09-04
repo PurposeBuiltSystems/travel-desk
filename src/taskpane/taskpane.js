@@ -581,19 +581,72 @@
     }
   }
 
+  /** Where a workbook actually sits, in words a person recognises. */
+  function plannerFolder(url) {
+    try {
+      var u = decodeURIComponent(String(url || ""));
+      var m = /\/(?:Documents|Shared Documents)\/(.*)$/.exec(u);
+      if (!m) { return ""; }
+      var parts = m[1].split("/");
+      parts.pop();                                   // drop the file itself
+      var host = /-my\.sharepoint\.com/.test(u) ? "Your OneDrive" : "SharePoint";
+      return host + (parts.length ? " \u203a " + parts.join(" \u203a ") : "");
+    } catch (e) { return ""; }
+  }
+
   function renderPlannerList() {
     var el = byId("plannerList");
+    if (!el) { return; }
     var pl = settings().planners || {};
     var keys = Object.keys(pl);
+    el.innerHTML = "";
     if (!keys.length) {
-      el.innerHTML = "No year-specific planners saved yet \u2014 connect a workbook, set its fiscal year above, and click Save.";
+      el.textContent = "No year-specific planners saved yet \u2014 connect a workbook, " +
+        "set its fiscal year above, and click Save.";
       return;
     }
-    el.innerHTML = keys.sort().map(function (k) {
-      var name = (pl[k].wbRef && pl[k].wbRef.name) || pl[k].wbUrl || "workbook";
-      return "<b>" + (k === "*" ? "All years" : k) + "</b>: " + name + " \u00b7 " + (pl[k].tableName || "?") +
-        ' <button type="button" class="chip-del" data-del="' + k + '">remove</button>';
-    }).join("<br>");
+    keys.sort().forEach(function (k) {
+      var p = pl[k] || {};
+      var name = (p.wbRef && p.wbRef.name) || "workbook";
+      var row = document.createElement("div");
+      row.style.cssText = "padding:4px 0";
+
+      var head = document.createElement("div");
+      head.innerHTML = "<b>" + (k === "*" ? "All years" : k) + "</b>: " + name +
+        " \u00b7 table " + (p.tableName || "?");
+      row.appendChild(head);
+
+      // Naming the file was never enough - "I don't know where it went" is
+      // about the FOLDER, and about being able to go and look.
+      var folder = plannerFolder(p.wbUrl);
+      if (folder) {
+        var f = document.createElement("div");
+        f.className = "hint";
+        f.style.margin = "0";
+        f.textContent = folder;
+        row.appendChild(f);
+      }
+
+      if (p.wbUrl) {
+        var open = document.createElement("button");
+        open.type = "button";
+        open.className = "chip-del";
+        open.textContent = "open it";
+        open.addEventListener("click", function () {
+          if (!openWorkbookUrl(p.wbUrl)) {
+            setStatus("info", "Couldn't open it from here. Its address is: " + p.wbUrl);
+          }
+        });
+        row.appendChild(open);
+      }
+      var del = document.createElement("button");
+      del.type = "button";
+      del.className = "chip-del";
+      del.setAttribute("data-del", k);
+      del.textContent = "remove";
+      row.appendChild(del);
+      el.appendChild(row);
+    });
   }
 
   function savePlanner() {
@@ -609,14 +662,26 @@
       wbRef: wbRef || st.wbRef,
     };
     saveSettings({ planners: pl });
-    renderPlannerList();
-    checkPlannerColumns();          // a just-connected planner may predate the lifecycle
-    verifyPlannerAccess(pl[key].wbRef, "coordinator");
-    noteWhereThePlannerLives(pl[key].wbUrl);
-    noteInvitesStale();
-    renderCoordSteps();
-    setStatus("info", (key === "*" ? "Saved as the catch-all planner." :
-      "Saved as the " + key + " planner \u2014 trips dated in " + key + " will go there automatically."));
+
+    // Say it saved BEFORE doing anything that can fail. Every one of the calls
+    // below is a nicety - a column check, an access probe, a note about where
+    // the file lives - and any of them throwing used to swallow the
+    // confirmation that came after them. The save had happened; the button
+    // just looked dead, which is the one thing it must never look.
+    var where = (pl[key].wbRef && pl[key].wbRef.name) || pl[key].wbUrl || "the workbook";
+    setStatus("info", (key === "*" ? "Saved \u2014 " + where + " is now your catch-all planner."
+      : "Saved \u2014 trips dated in " + key + " go to " + where + ".") +
+      " It's listed below with a link to open it.");
+
+    [renderPlannerList, checkPlannerColumns, renderCoordSteps, noteInvitesStale,
+     function () { noteWhereThePlannerLives(pl[key].wbUrl); },
+     function () { verifyPlannerAccess(pl[key].wbRef, "coordinator"); },
+    ].forEach(function (fn) {
+      try { fn(); } catch (e) {
+        try { if (window.console && console.error) { console.error("savePlanner:", e); } }
+        catch (e2) { /* nothing left to try */ }
+      }
+    });
   }
 
   function refreshFyLine() {
@@ -2819,7 +2884,8 @@
           // Keep the workbook connected so one click finishes the job.
           setVal("wbUrl", made.webUrl || "");
           saveSettings({ wbUrl: made.webUrl || "" });
-          setStatus("error", "Created \u201c" + made.name + "\u201d in your OneDrive, but couldn't " +
+          setStatus("error", "Created \u201c" + made.name + "\u201d in " +
+            (plannerFolder(made.webUrl) || "your OneDrive") + ", but couldn't " +
             "format it as a table (" + ((tableErr && tableErr.message) || tableErr) + "). " +
             "It's connected \u2014 pick the Planner sheet and click \u201cMake this sheet a table\u201d.");
           setProp("noTableBox", "hidden", false);
@@ -2839,9 +2905,13 @@
       saveSettings({ wbUrl: made.webUrl || "", tableName: tableName });
       renderPlannerLink();
       var shown = openWorkbookUrl(made.webUrl);
-      setStatus("info", "Created \u201c" + made.name + "\u201d in your OneDrive and connected it." +
-        (shown ? " I've opened it so you can see where it lives." :
-                 " Use \u201cOpen the planner workbook\u201d above to see where it lives.") +
+      // "in your OneDrive" is not a location. Name the folder it went into -
+      // especially when one was typed, since that is the moment a file
+      // becomes hard to find again.
+      var at = plannerFolder(made.webUrl) || "your OneDrive";
+      setStatus("info", "Created \u201c" + made.name + "\u201d in " + at + " and connected it." +
+        (shown ? " I've opened it so you can see it." :
+                 " Use \u201cOpen the planner workbook\u201d above to open it.") +
         " Set the fiscal year it covers, then Save planner for this year.");
     } catch (e) {
       setStatus("error", "Couldn't create the planner: " + ((e && e.message) || e));

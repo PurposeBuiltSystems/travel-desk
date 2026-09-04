@@ -21,7 +21,7 @@
    *
    * Kept in step with the ?v= in taskpane.html by tools/check-build.js.
    */
-  var PANE_BUILD = "67";
+  var PANE_BUILD = "68";
 
   var SETTINGS_KEY = "traveldesk.settings";
   var wbRef = null; // {driveId, itemId, name} cached after connect
@@ -1473,6 +1473,10 @@
 
   var TRAVEL_LOOKBACK_DAYS = 180;
 
+  // Comfortably above the threshold for appearing in the list at all: a lone
+  // result this strong is the answer, not a suggestion.
+  var AUTO_USE_SCORE = 80;
+
   /**
    * Search the mailbox rather than only reading what is open.
    *
@@ -1501,6 +1505,18 @@
         filed: trips(),
       });
       renderTravelFinds(hits, msgs.length);
+
+      /*
+       * One strong match, after somebody explicitly asked us to search: use it.
+       *
+       * Presenting a single obvious answer and waiting to be told to apply it
+       * is a click that buys nothing - and it reads as "the search worked but
+       * the form didn't", because the result sits there next to empty boxes.
+       * Several candidates still need a person to choose; one does not.
+       */
+      if (hits.length === 1 && hits[0].score >= AUTO_USE_SCORE && !hits[0].alreadyFiled) {
+        await useTravelEmail(hits[0], true);
+      }
     } catch (e) {
       setStatus("error", "Couldn't search your inbox: " + ((e && e.message) || e));
     } finally {
@@ -1550,8 +1566,12 @@
         h.from + " \u00b7 " + h.why.slice(0, 2).join(", ");
       var use = document.createElement("button");
       use.type = "button";
-      use.className = "chip-del";
-      use.textContent = "Use this";
+      // The action, not a footnote: when several candidates are listed this is
+      // the only thing that actually fills the form, and as a small grey chip
+      // beside the metadata it read as decoration.
+      use.className = "primary";
+      use.style.cssText = "width:auto;padding:4px 12px;margin-top:4px";
+      use.textContent = "Fill the form from this";
       use.addEventListener("click", function () { useTravelEmail(h); });
       li.appendChild(t); li.appendChild(meta); li.appendChild(use);
       ul.appendChild(li);
@@ -1562,7 +1582,7 @@
   }
 
   /** Read a message the user is not looking at, then prefill from it. */
-  async function useTravelEmail(hit) {
+  async function useTravelEmail(hit, automatic) {
     setStatus("work", "Reading \u201c" + hit.subject + "\u201d\u2026");
     try {
       var token = await GraphData.getToken();
@@ -1606,6 +1626,16 @@
         if (s[k]) { pre.fields[k] = s[k]; pre.sources[k] = "your settings"; }
       });
       applyPrefill(pre, scanned, skipped);
+      if (automatic) {
+        // Nobody chose this one, so name it rather than leaving them to work
+        // out where the values came from.
+        var el = byId("status");
+        if (el && !el.hidden) {
+          el.textContent = "Filled from the one travel email in your inbox: \u201c" +
+            hit.subject + "\u201d (" + (hit.receivedDateTime || "").slice(0, 10) + "). " +
+            el.textContent;
+        }
+      }
     } catch (e) {
       setStatus("error", "Couldn't read that message: " + ((e && e.message) || e));
     }

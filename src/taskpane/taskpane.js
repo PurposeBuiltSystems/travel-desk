@@ -633,9 +633,21 @@
         open.className = "chip-del";
         open.textContent = "open it";
         open.addEventListener("click", function () {
-          if (!openWorkbookUrl(p.wbUrl)) {
-            setStatus("info", "Couldn't open it from here. Its address is: " + p.wbUrl);
-          }
+          if (openWorkbookUrl(p.wbUrl)) { return; }
+          // Leave the address on screen rather than in a status line the next
+          // click wipes: it is the only way back to the file.
+          setStatus("error", "Outlook wouldn't open a window from here \u2014 " +
+            "the address is below, ready to copy.");
+          var box = byId("plannerAddr_" + k.replace(/\W/g, ""));
+          if (box) { box.hidden = false; box.select(); return; }
+          var t = document.createElement("input");
+          t.type = "text";
+          t.id = "plannerAddr_" + k.replace(/\W/g, "");
+          t.readOnly = true;
+          t.value = p.wbUrl;
+          t.style.cssText = "width:100%;margin-top:4px;font-size:11px";
+          row.appendChild(t);
+          t.select();
         });
         row.appendChild(open);
       }
@@ -877,15 +889,33 @@
    * window.open is the desktop fallback. If both are blocked the persistent
    * link below is still there, so this never becomes the only way in.
    */
+  /**
+   * Open a workbook, and be honest about whether it opened.
+   *
+   * openBrowserWindow returns void, so calling it proves nothing - on a host
+   * that does not support it, the call is a no-op and the old code still
+   * reported success. window.open is worse: a task-pane webview blocks popups
+   * routinely and hands back null, which was also read as success. Both meant
+   * the pane could say "I've opened it" while nothing had happened, leaving
+   * somebody staring at an unchanged screen looking for a window.
+   */
   function openWorkbookUrl(url) {
     if (!url) { return false; }
     try {
-      if (Office.context.ui && Office.context.ui.openBrowserWindow) {
-        Office.context.ui.openBrowserWindow(url);
+      var ui = Office.context.ui;
+      var supported = true;
+      try {
+        var req = Office.context.requirements;
+        if (req && req.isSetSupported) {
+          supported = req.isSetSupported("OpenBrowserWindowApi", "1.1");
+        }
+      } catch (e) { supported = true; }   // unknown is not the same as no
+      if (ui && ui.openBrowserWindow && supported) {
+        ui.openBrowserWindow(url);
         return true;
       }
-      window.open(url, "_blank");
-      return true;
+      var w = window.open(url, "_blank");
+      return !!w;                          // a blocked popup is not an opening
     } catch (e) { return false; }
   }
 

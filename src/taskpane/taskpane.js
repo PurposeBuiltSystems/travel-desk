@@ -9,6 +9,20 @@
 (function () {
   "use strict";
 
+  /*
+   * The build this JAVASCRIPT belongs to.
+   *
+   * GitHub Pages serves the current taskpane.js whatever ?v= asks for, but
+   * Outlook caches taskpane.HTML for far longer than its headers request. So
+   * a returning user runs today's code against an old page - and every
+   * element added since then is simply absent. The code guards for missing
+   * elements, so nothing throws; the features just quietly do nothing, which
+   * is indistinguishable from being broken.
+   *
+   * Kept in step with the ?v= in taskpane.html by tools/check-build.js.
+   */
+  var PANE_BUILD = "67";
+
   var SETTINGS_KEY = "traveldesk.settings";
   var wbRef = null; // {driveId, itemId, name} cached after connect
 
@@ -252,6 +266,9 @@
     step("the planner list", renderPlannerList);
     step("the planner link", renderPlannerLink);
     step("the build indicator", renderVersion);
+    // Before anything else reports a problem: if the page itself is stale,
+    // that is the problem.
+    step("the cached-page check", checkPaneFreshness);
     // Only when it has never verified: this must not become a Graph call on
     // every single open.
     step("the setup freshness check", checkSetupFreshness);
@@ -1741,6 +1758,36 @@
     setProp("learnSave", "hidden", true);
     setProp("learnClear", "hidden", true);
     setStatus("info", "Your form's custom wording was removed.");
+  }
+
+  /**
+   * Notice a stale page and fetch a fresh one, once.
+   *
+   * The reload carries a cache-busting query so Outlook cannot hand back the
+   * same copy, and it happens at most once per session - a stale page that
+   * survives a reload is a real problem the person needs told about, not a
+   * loop to spin in.
+   */
+  function checkPaneFreshness() {
+    var loaded = paneVersion();
+    if (loaded === "?" || loaded === PANE_BUILD) { return; }
+
+    var key = "traveldesk.refresh." + PANE_BUILD;
+    var tried = false;
+    try { tried = window.sessionStorage.getItem(key) === "1"; } catch (e) { tried = true; }
+
+    if (!tried) {
+      try {
+        window.sessionStorage.setItem(key, "1");
+        window.location.replace(window.location.pathname + "?fresh=" + PANE_BUILD +
+          "-" + new Date().getTime());
+        return;
+      } catch (e) { /* fall through and say so instead */ }
+    }
+    setStatus("error", "Outlook is showing a cached copy of this pane \u2014 build " +
+      loaded + "'s page with build " + PANE_BUILD + "'s code, so anything added since " +
+      "build " + loaded + " won't appear. Close the pane and reopen it. If it still says " +
+      "build " + loaded + " at the top, quit Outlook and reopen.");
   }
 
   function openPlannerSetup() {

@@ -21,7 +21,7 @@
    *
    * Kept in step with the ?v= in taskpane.html by tools/check-build.js.
    */
-  var PANE_BUILD = "68";
+  var PANE_BUILD = "69";
 
   var SETTINGS_KEY = "traveldesk.settings";
   var wbRef = null; // {driveId, itemId, name} cached after connect
@@ -1473,9 +1473,12 @@
 
   var TRAVEL_LOOKBACK_DAYS = 180;
 
-  // Comfortably above the threshold for appearing in the list at all: a lone
-  // result this strong is the answer, not a suggestion.
-  var AUTO_USE_SCORE = 80;
+  // A lone result is used when its SUBJECT says outright that it is a
+  // confirmation, or when it scores well above the bar for being listed at
+  // all. The score alone was not enough: the real forwarded confirmation
+  // scored 77 against a threshold of 80, because a forward's preview is the
+  // forwarder's signature and the dates and costs never reach the scorer.
+  var AUTO_USE_SCORE = 65;
 
   /**
    * Search the mailbox rather than only reading what is open.
@@ -1514,7 +1517,8 @@
        * the form didn't", because the result sits there next to empty boxes.
        * Several candidates still need a person to choose; one does not.
        */
-      if (hits.length === 1 && hits[0].score >= AUTO_USE_SCORE && !hits[0].alreadyFiled) {
+      if (hits.length === 1 && !hits[0].alreadyFiled &&
+          (hits[0].strong || hits[0].score >= AUTO_USE_SCORE)) {
         await useTravelEmail(hits[0], true);
       }
     } catch (e) {

@@ -330,9 +330,30 @@
       if (c.end) { score += 40; }
       if (floor && c.start >= floor) { score += 60; }
       else if (floor) { score -= 50; }
-      var near = t.slice(Math.max(0, c.at - 90), c.at + 60);
-      if (DATE_CUE.test(near)) { score += 35; }
-      if (/(register|paid|payment|invoice|receipt|order|issued|sent|due|expires?|deadline|respond|rsvp|cancel)/i.test(near)) {
+      /*
+       * Scoped to LINES, not to a character window.
+       *
+       * A 150-character window reaches into whatever happens to sit nearby,
+       * and in a real confirmation that is fatal in both directions: the
+       * event date lost 45 points to the word "registering" in the greeting
+       * two lines above it, while the room-block deadline GAINED 35 from an
+       * "Invitational Travelers" heading below it. The deadline won, and a
+       * form was filled with the wrong date - which is the one failure this
+       * whole file is built to avoid.
+       *
+       * A label binds to its date on the same line, or the line above it.
+       * A disqualifying word - "registered on", "payment processed" - binds
+       * only on the date's own line.
+       */
+      var lineStart = t.lastIndexOf("\n", c.at) + 1;
+      var lineEnd = t.indexOf("\n", c.at);
+      if (lineEnd < 0) { lineEnd = t.length; }
+      var own = t.slice(lineStart, lineEnd);
+      var prevStart = lineStart > 1 ? t.lastIndexOf("\n", lineStart - 2) + 1 : 0;
+      var withPrev = t.slice(prevStart, lineEnd);
+
+      if (DATE_CUE.test(withPrev)) { score += 35; }
+      if (/(register(ed|ration)?\s+(on|was|received)|paid|payment|invoice|receipt|order\s+(placed|date)|issued|due|expires?|deadline|respond\s+by|rsvp|cancel)/i.test(own)) {
         score -= 45;
       }
       score -= c.at / 100000;             // earlier in the message, marginally
@@ -1830,6 +1851,12 @@
         id: m.id, subject: m.subject || "", event: ev,
         from: m.from || "", receivedDateTime: m.receivedDateTime || "",
         webLink: m.webLink || "", score: s.score, why: s.why,
+        // The subject saying outright that it is a confirmation is worth more
+        // than a total, because a FORWARDED one scores low for reasons that
+        // have nothing to do with it being travel: Outlook's preview of a
+        // forward is the forwarder's own signature, so the dates, the venue
+        // and the costs are all missing from what the scorer can see.
+        strong: STRONG_SUBJ.test(clean(m.subject || "")),
         alreadyFiled: !!(ev && known[norm(ev)]),
       });
     });

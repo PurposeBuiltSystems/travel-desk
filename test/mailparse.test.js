@@ -68,6 +68,38 @@ check("ignores an RSVP deadline",
 check("no dates at all", M.eventDates("See the attached agenda.", "2026-08-23T12:00:00Z"),
   { start: "", end: "" });
 
+// A room-block deadline must never beat the event date. In the real
+// forwarded confirmation it did: the event date lost 45 points to the word
+// "registering" in the greeting above it, and the deadline gained 35 from an
+// "Invitational Travelers" heading below it.
+check("the event date beats a room-block deadline",
+  M.eventDates([
+    "Thank you for registering for the EDC-8 Midwest Peer Exchange!",
+    "Event Details",
+    "Date: October 15, 2026",
+    "Time: 8:00 AM - 5:00 PM",
+    "What to Do Next: Invitational Travelers",
+    "Book your hotel: rooms are $150 per night. Reserve your room by October 6, 2026 to receive the group rate.",
+  ].join("\n"), "2026-08-23T12:20:48Z").start,
+  "2026-10-15");
+
+check("a stated registration date is still rejected",
+  M.eventDates([
+    "Your registration was received on August 19, 2026.",
+    "Conference dates: October 6-8, 2026",
+  ].join("\n"), "2026-08-01T00:00:00Z"),
+  { start: "2026-10-06", end: "2026-10-08" });
+
+check("a payment date is still rejected",
+  M.eventDates([
+    "Payment processed September 2, 2026.",
+    "The summit takes place November 4-6, 2026.",
+  ].join("\n"), "2026-08-01T00:00:00Z").start, "2026-11-04");
+
+check("a label on the line above still counts",
+  M.eventDates("Conference dates\nOctober 6-8, 2026", "2026-08-01T00:00:00Z").start,
+  "2026-10-06");
+
 // --------------------------------------------------------------- location
 
 check("plain city and state",

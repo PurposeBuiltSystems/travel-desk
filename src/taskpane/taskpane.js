@@ -5,7 +5,7 @@
  * form, click "Create travel request" — the add-in creates the Travel
  * Authorization email draft AND appends the matching planner row.
  */
-/* global Office, GraphData, TravelForm, TravelCoord, XlsxGen, TdMail, TdAttach, JSZip, document, window */
+/* global Office, TravelLogo, GraphData, TravelForm, TravelCoord, XlsxGen, TdMail, TdAttach, JSZip, document, window */
 (function () {
   "use strict";
 
@@ -21,7 +21,7 @@
    *
    * Kept in step with the ?v= in taskpane.html by tools/check-build.js.
    */
-  var PANE_BUILD = "72";
+  var PANE_BUILD = "73";
 
   var SETTINGS_KEY = "traveldesk.settings";
   var wbRef = null; // {driveId, itemId, name} cached after connect
@@ -676,6 +676,23 @@
       row.appendChild(del);
       el.appendChild(row);
     });
+  }
+
+  /**
+   * The footer mark, as an inline attachment.
+   *
+   * Returns nothing if the logo module is missing, and formHtml then omits
+   * the <img> - a draft without the mark is still a complete form, and a
+   * broken image on an official document is worse than no image.
+   */
+  function logoAttachment() {
+    if (typeof TravelLogo === "undefined") { return []; }
+    return [{
+      name: TravelLogo.FILENAME,
+      contentType: TravelLogo.CONTENT_TYPE,
+      contentBytes: TravelLogo.BYTES,
+      contentId: TravelLogo.CID,
+    }];
   }
 
   function savePlanner() {
@@ -3172,6 +3189,7 @@
         orgName: s.orgName || "",
         fundingLabel: s.fundingLabel || "",
         fyStartMonth: Number(s.fyStartMonth) || 7,
+        logoCid: (typeof TravelLogo !== "undefined") ? TravelLogo.CID : "",
         fyPrefix: s.fyPrefix || "FY",
         costMode: val("costMode") || "per-person",
       };
@@ -3180,7 +3198,8 @@
         try {
           setStatus("work", "Creating the Travel Authorization draft…");
           var draft = await GraphData.createDraft(token, val("coordEmail").trim(),
-            TravelForm.subjectLine(m), TravelForm.formHtml(m, orgOpts));
+            TravelForm.subjectLine(m), TravelForm.formHtml(m, orgOpts),
+            logoAttachment());
           done.push("draft OPENED for you — review it and press Send");
           // "Draft created" is not "request sent". Open it, because this is
           // the moment the traveler has to press Send.

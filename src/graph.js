@@ -575,11 +575,29 @@
     return (m && m.body && m.body.content) || "";
   }
 
-  async function createDraft(token, to, subject, html) {
+  /**
+   * attachments is optional: [{name, contentType, contentBytes, contentId}].
+   * Anything with a contentId is marked inline, which is how the footer logo
+   * travels with the message instead of being fetched from the web when the
+   * coordinator opens it.
+   */
+  async function createDraft(token, to, subject, html, attachments) {
     var body = {
       subject: subject,
       body: { contentType: "HTML", content: html },
     };
+    if (attachments && attachments.length) {
+      body.attachments = attachments.map(function (a) {
+        return {
+          "@odata.type": "#microsoft.graph.fileAttachment",
+          name: a.name,
+          contentType: a.contentType,
+          contentBytes: a.contentBytes,
+          isInline: !!a.contentId,
+          contentId: a.contentId,
+        };
+      });
+    }
     // An empty address is rejected outright (400 ErrorInvalidRecipients).
     // A third party with no billing contact on file, or a blank coordinator
     // address, should still get a draft — the user just fills the To line.

@@ -488,4 +488,41 @@ T.check("the embedded bytes decode to a PNG", raw.slice(1, 4).toString(), "PNG")
 T.check("and are small enough to ride along on every draft", raw.length < 8192, true);
 T.check("the content type matches the bytes", L.CONTENT_TYPE, "image/png");
 
+// --- finding the planner among a user's files ----------------------------
+//
+// The add-in can list files, but a list of forty spreadsheets is not an
+// answer. Scoring is on the NAME only, deliberately: inspecting each
+// candidate's columns would mean reading files the user never pointed at.
+
+var ranked = F.rankPlannerCandidates([
+  { name: "Budget FY27.xlsx" },
+  { name: "Division travel planner.xlsx" },
+  { name: "Copy of travel planner.xlsx" },
+  { name: "Contacts.xlsx" },
+  { name: "Trips 2027.xlsx" },
+  { name: "~$travel planner.xlsx" },
+]);
+
+T.check("the obvious planner wins", ranked[0].name, "Division travel planner.xlsx");
+T.check("and says why", ranked[0].why.indexOf("travel planner") >= 0, true);
+T.check("a stale copy ranks below the real one",
+  ranked.findIndex(function (f) { return /^Copy of/.test(f.name); }) >
+  ranked.findIndex(function (f) { return f.name === "Division travel planner.xlsx"; }), true);
+T.check("a budget is pushed below zero",
+  ranked.find(function (f) { return /Budget/.test(f.name); }).score < 0, true);
+T.check("so is a contacts list",
+  ranked.find(function (f) { return /Contacts/.test(f.name); }).score < 0, true);
+T.check("an Excel lock file is buried",
+  ranked[ranked.length - 1].name, "~$travel planner.xlsx");
+
+// Ranking must not mutate or drop what it was given.
+var input = [{ name: "a.xlsx", driveId: "d1", itemId: "i1" }, { name: "travel planner.xlsx" }];
+var out = F.rankPlannerCandidates(input);
+T.check("nothing is dropped", out.length, 2);
+T.check("the caller's objects are untouched", input[0].score, undefined);
+T.check("identifiers survive ranking",
+  out.find(function (f) { return f.name === "a.xlsx"; }).itemId, "i1");
+T.check("an empty list is fine", F.rankPlannerCandidates([]).length, 0);
+T.check("so is nothing at all", F.rankPlannerCandidates().length, 0);
+
 T.done("All Travel Desk form tests passed.");

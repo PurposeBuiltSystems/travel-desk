@@ -21,7 +21,7 @@
    *
    * Kept in step with the ?v= in taskpane.html by tools/check-build.js.
    */
-  var PANE_BUILD = "73";
+  var PANE_BUILD = "74";
 
   var SETTINGS_KEY = "traveldesk.settings";
   var wbRef = null; // {driveId, itemId, name} cached after connect
@@ -93,7 +93,8 @@
     Object.keys(patch).forEach(function (k) { s[k] = patch[k]; });
     Office.context.roamingSettings.set(SETTINGS_KEY, JSON.stringify(s));
     persistSettings("your settings");
-    try { renderFirstRun(); refreshCoordVisibility(); } catch (e) { /* pre-DOM calls are fine */ }
+    try { renderFirstRun(); renderPlannerOffer(); refreshCoordVisibility(); }
+    catch (e) { /* pre-DOM calls are fine */ }
     return s;
   }
 
@@ -1855,6 +1856,154 @@
       "build " + loaded + " at the top, quit Outlook and reopen.");
   }
 
+  /**
+   * When there is no planner, say so at the top and offer the three ways to
+   * get one.
+   *
+   * They already existed - "Create my planner", "Show my files", paste a
+   * link - but inside Setup, inside a second disclosure labelled "I'm the
+   * coordinator", which is two closed sections above the fold. The author of
+   * this add-in could not find them. A first-run user has no chance, and a
+   * certification reviewer following the test notes has less.
+   *
+   * Nothing is read to draw this: it is a settings check, not a search. The
+   * search only runs if the user presses the button, which is the promise
+   * the listing makes about every read this add-in does.
+   */
+  function renderPlannerOffer() {
+    var host = byId("plannerOffer");
+    if (!host) { return; }
+    var s = settings();
+    var have = !!(s.wbRef || s.wbUrl || (s.planners && Object.keys(s.planners).length));
+    if (have) { host.hidden = true; host.innerHTML = ""; return; }
+
+    host.hidden = false;
+    host.innerHTML = "";
+
+    var h = document.createElement("p");
+    h.className = "firstrun-h";
+    h.textContent = "No travel planner connected yet";
+    var b = document.createElement("p");
+    b.className = "firstrun-b";
+    b.textContent = "Requests will still produce an authorization email, but the " +
+      "planner row has nowhere to go.";
+    host.appendChild(h);
+    host.appendChild(b);
+
+    var row = document.createElement("div");
+    row.className = "offer-actions";
+
+    function button(label, primary, fn) {
+      var el = document.createElement("button");
+      el.textContent = label;
+      if (primary) { el.className = "primary"; }
+      el.addEventListener("click", fn);
+      row.appendChild(el);
+      return el;
+    }
+
+    button("Find my planner", true, findPlanner);
+    button("Create a new one", false, function () {
+      openPlannerSetup();
+      var n = byId("newPlannerName");
+      if (n && n.focus) { n.focus(); }
+    });
+    button("Paste a link", false, function () {
+      openPlannerSetup();
+      var u = byId("wbUrl");
+      if (u && u.focus) { u.focus(); }
+    });
+    host.appendChild(row);
+
+    var results = document.createElement("div");
+    results.id = "plannerOfferResults";
+    results.className = "hint";
+    host.appendChild(results);
+  }
+
+  /**
+   * Look through the user's own files for something that looks like a
+   * planner, and offer the best matches.
+   *
+   * Ranked on the name alone. Opening each candidate to inspect its columns
+   * would be more accurate and would mean reading files the user never
+   * pointed at, which this add-in does not do.
+   */
+  async function findPlanner() {
+    var out = byId("plannerOfferResults");
+    if (!out) { return; }
+    out.textContent = "";
+    setStatus("work", "Looking through your files\u2026");
+    try {
+      var token = await GraphData.getToken();
+      var seen = {}, all = [];
+      function add(list) {
+        (list || []).forEach(function (r) {
+          var k = r.driveId + "|" + r.itemId;
+          if (seen[k]) { return; }
+          seen[k] = true;
+          all.push(r);
+        });
+      }
+      // Recent and shared first - they need no guess about naming - then two
+      // searches for the words a planner almost always has in its name.
+      try { add(await GraphData.recentWorkbooks(token)); } catch (e) { /* optional */ }
+      try { add(await GraphData.sharedWorkbooks(token)); } catch (e) { /* optional */ }
+      for (var qi = 0; qi < 2; qi++) {
+        try { add(await GraphData.searchWorkbooks(token, qi ? "planner" : "travel")); }
+        catch (e) { /* optional */ }
+      }
+
+      var ranked = TravelForm.rankPlannerCandidates(all)
+        .filter(function (f) { return f.score > 0; })
+        .slice(0, 5);
+
+      if (!ranked.length) {
+        setStatus("info", all.length
+          ? "Nothing among your " + all.length + " workbook(s) looks like a travel planner. " +
+            "Create one, or paste its link."
+          : "No workbooks found. Create a planner, or paste its link.");
+        return;
+      }
+
+      var lead = document.createElement("p");
+      lead.textContent = ranked.length === 1 ? "This looks like your planner:"
+                                             : "These look like your planner:";
+      out.appendChild(lead);
+
+      ranked.forEach(function (f) {
+        var line = document.createElement("div");
+        line.className = "offer-candidate";
+        var use = document.createElement("button");
+        use.textContent = "Use this";
+        use.addEventListener("click", function () { usePlannerCandidate(f); });
+        var name = document.createElement("span");
+        name.textContent = " " + f.name + (f.why ? " — " + f.why : "");
+        line.appendChild(use);
+        line.appendChild(name);
+        out.appendChild(line);
+      });
+
+      var more = document.createElement("button");
+      more.textContent = "Show all my files instead";
+      more.addEventListener("click", function () {
+        openPlannerSetup();
+        browseWorkbooks();
+      });
+      out.appendChild(more);
+      setStatus("info", ranked.length + " possible planner(s) \u2014 pick one, or open Setup to see everything.");
+    } catch (e) {
+      setStatus("error", "Couldn't look through your files: " + ((e && e.message) || e));
+    }
+  }
+
+  /** Connect a candidate the user picked from the offer at the top. */
+  async function usePlannerCandidate(f) {
+    openPlannerSetup();
+    await connectRef(f);
+    renderPlannerOffer();
+  }
+
   function openPlannerSetup() {
     setAttrIf("setup", "open", "open");
     setAttrIf("coordSetup", "open", "open");
@@ -2779,6 +2928,16 @@
     if (idx === "") { return; }
     var ref = pickerRefs[Number(idx)];
     if (!ref) { return; }
+    await connectRef(ref);
+  }
+
+  /**
+   * Connect a workbook the user has chosen, from wherever they chose it -
+   * the Setup picker, or the "looks like your planner" offer at the top.
+   * One path, so the two cannot drift on table detection or on what gets
+   * saved.
+   */
+  async function connectRef(ref) {
     try {
       setStatus("work", 'Opening \u201c' + ref.name + '\u201d\u2026');
       var token = await GraphData.getToken();

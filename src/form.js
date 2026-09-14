@@ -238,6 +238,65 @@
    * Returns null when the key is fine (or is the catch-all), otherwise the
    * label the add-in will actually look for, so the caller can say so.
    */
+  /**
+   * Rank workbooks by how much they look like a travel planner.
+   *
+   * The add-in can list a user's files, but a list of forty spreadsheets is
+   * not an answer - the point is to say "this one, probably". Scoring is on
+   * the NAME only: the alternative is opening each candidate to inspect its
+   * columns, which means reading files the user never pointed at, and this
+   * add-in does not read anything without being asked.
+   *
+   * Returns a new array, best first, each with .score and .why.
+   */
+  function rankPlannerCandidates(files) {
+    var STRONG = [
+      [/\btravel\s*(desk\s*)?planner\b/i, 60, "named a travel planner"],
+      [/\bplanner\b/i, 34, "named a planner"],
+      [/\btravel\b/i, 26, "mentions travel"],
+    ];
+    var WEAK = [
+      [/\btrips?\b/i, 14, "mentions trips"],
+      [/\bauthoriz/i, 12, "mentions authorization"],
+      [/\bitinerar/i, 10, "mentions itinerary"],
+      [/\b(fy|sfy|ffy)\s*\d{2}\b|\b20\d{2}\b/i, 8, "has a year in the name"],
+      [/\b(division|bureau|office|team)\b/i, 6, "names a division"],
+    ];
+    // Things that are plainly something else. A budget workbook full of
+    // dollar amounts is the easiest thing in the world to mistake for this.
+    var AGAINST = [
+      [/\b(budgets?|invoices?|payroll|timesheets?|rosters?|inventor(y|ies)|contacts?|expenses?)\b/i, -40],
+      [/\b(template|sample|example|copy of|backup|old|archive)\b/i, -25],
+    ];
+    // Excel's lock files are named after the workbook they lock, so
+    // "~$travel planner.xlsx" scores well on every signal that matters and
+    // then cannot be opened. Disqualified outright rather than penalised,
+    // because no amount of looking like a planner makes one usable.
+    var DISQUALIFY = /^~\$|\.tmp$/i;
+
+    return (files || []).map(function (f) {
+      var name = String((f && f.name) || "");
+      var score = 0, why = [];
+      var hit = false;
+      STRONG.forEach(function (r) {
+        if (!hit && r[0].test(name)) { score += r[1]; why.push(r[2]); hit = true; }
+      });
+      WEAK.forEach(function (r) {
+        if (r[0].test(name)) { score += r[1]; why.push(r[2]); }
+      });
+      AGAINST.forEach(function (r) { if (r[0].test(name)) { score += r[1]; } });
+      if (DISQUALIFY.test(name)) { score = -1000; why = ["a lock or temp file"]; }
+      var out = {};
+      for (var k in f) { if (Object.prototype.hasOwnProperty.call(f, k)) { out[k] = f[k]; } }
+      out.score = score;
+      out.why = why.join(", ");
+      return out;
+    }).sort(function (a, b) {
+      if (b.score !== a.score) { return b.score - a.score; }
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    });
+  }
+
   function plannerKeyMismatch(key, startMonth, prefix) {
     if (!key || key === "*") { return null; }
     var pre = (prefix == null || prefix === "") ? "FY" : String(prefix);
@@ -756,6 +815,7 @@
   var api = {
     pickPlanner: pickPlanner,
     plannerKeyMismatch: plannerKeyMismatch,
+    rankPlannerCandidates: rankPlannerCandidates,
     STATUS: STATUS,
     isAuthorized: isAuthorized,
     variance: variance,

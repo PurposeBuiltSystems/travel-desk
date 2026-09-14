@@ -195,6 +195,17 @@ button:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, v
 .firstrun-b { margin: 0; color: var(--fg); font-size: 12.5px; line-height: 1.5; }
 .firstrun button { margin-top: 10px; }
 
+/* The planner offer. Three routes on one line, wrapping on a narrow pane -
+   the pane is 320px at its meanest and these are the first buttons a new
+   user sees, so none of them may end up clipped. */
+.offer-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.offer-actions button { flex: 0 1 auto; margin-top: 0; }
+.offer-candidate { display: flex; align-items: baseline; gap: 6px; margin: 6px 0;
+                   flex-wrap: wrap; }
+.offer-candidate button { flex: 0 0 auto; margin-top: 0; }
+.offer-candidate span { font-size: 12.5px; }
+#plannerOfferResults { margin-top: 10px; }
+
 /* required-field marker */
 .req {
   display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 700;

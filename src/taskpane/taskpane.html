@@ -13,7 +13,7 @@
   <!-- JSZip: packages the generated planner workbook client-side -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-  <link rel="stylesheet" href="taskpane.css?v=73" />
+  <link rel="stylesheet" href="taskpane.css?v=74" />
 </head>
 <body>
   <header class="app-head">
@@ -31,6 +31,10 @@
   <p id="paneVersion" class="hint" style="text-align:right;margin:2px 0 6px;opacity:.7"></p>
 
   <div id="firstRun" class="firstrun" hidden></div>
+
+  <!-- Shown when no planner is connected. The three ways to get one were
+       buried two collapsed sections deep, which is where they stayed. -->
+  <div id="plannerOffer" class="firstrun" hidden></div>
   <!-- Coordinators only, and only until it is done: the three stages in the
        order they have to happen, because nothing else made that order visible. -->
   <div id="coordSteps" class="steps" hidden></div>
@@ -345,13 +349,13 @@
 
   <section id="status" class="status" hidden></section>
 
-  <script src="../mailparse.js?v=73"></script>
-  <script src="../attachtext.js?v=73"></script>
-  <script src="../logo.js?v=73"></script>
-  <script src="../form.js?v=73"></script>
-  <script src="../xlsxgen.js?v=73"></script>
-  <script src="../coord.js?v=73"></script>
-  <script src="../graph.js?v=73"></script>
-  <script src="taskpane.js?v=73"></script>
+  <script src="../mailparse.js?v=74"></script>
+  <script src="../attachtext.js?v=74"></script>
+  <script src="../logo.js?v=74"></script>
+  <script src="../form.js?v=74"></script>
+  <script src="../xlsxgen.js?v=74"></script>
+  <script src="../coord.js?v=74"></script>
+  <script src="../graph.js?v=74"></script>
+  <script src="taskpane.js?v=74"></script>
 </body>
 </html>

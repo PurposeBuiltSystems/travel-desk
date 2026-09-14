@@ -21,7 +21,7 @@
    *
    * Kept in step with the ?v= in taskpane.html by tools/check-build.js.
    */
-  var PANE_BUILD = "69";
+  var PANE_BUILD = "70";
 
   var SETTINGS_KEY = "traveldesk.settings";
   var wbRef = null; // {driveId, itemId, name} cached after connect

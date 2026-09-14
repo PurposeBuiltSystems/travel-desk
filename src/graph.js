@@ -267,7 +267,35 @@
    * always used to put the planner - fine for a personal file, less so for
    * something a division shares, which is why the caller can now choose.
    */
+  /**
+   * A OneDrive that has never been opened does not exist yet.
+   *
+   * The account is licensed, but until someone loads OneDrive once, every
+   * /me/drive call returns 404. The upload below already says something
+   * useful about that - but only if the upload is what runs first. Give the
+   * planner a folder and ensureFolder runs before it and reports "Couldn't
+   * create the folder ... (404)", which tells the reader nothing about the
+   * actual problem or the fix.
+   *
+   * Checking the drive first means one honest message either way. Confirmed
+   * against a real, licensed, never-opened account: GET /me/drive returns
+   * 404 itemNotFound and /me/drives is an empty list.
+   */
+  async function ensureDrive(token) {
+    var res = await fetchRetry(GRAPH + "/me/drive?$select=id", {
+      headers: { Authorization: "Bearer " + token },
+    });
+    if (res.status === 404) {
+      throw new Error("Your OneDrive isn't set up yet. Open onedrive.com once and let it " +
+        "load, then try again. If it won't open, your Microsoft 365 plan may not include it.");
+    }
+    if (!res.ok) {
+      throw new Error("Couldn't reach your OneDrive (" + res.status + ")");
+    }
+  }
+
   async function uploadWorkbook(token, filename, bytes, folder) {
+    await ensureDrive(token);
     var dir = "";
     if (folder && String(folder).trim()) { dir = await ensureFolder(token, folder); }
     var target = dir

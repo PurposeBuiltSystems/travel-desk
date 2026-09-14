@@ -277,9 +277,13 @@
    * create the folder ... (404)", which tells the reader nothing about the
    * actual problem or the fix.
    *
-   * Checking the drive first means one honest message either way. Confirmed
-   * against a real, licensed, never-opened account: GET /me/drive returns
-   * 404 itemNotFound and /me/drives is an empty list.
+   * Checking the drive first means one honest message either way.
+   *
+   * Note for anyone debugging this from the outside: a 404 on /me/drive does
+   * NOT prove the drive is missing. A token without a Files.* scope gets the
+   * same itemNotFound, which is exactly how this check came to be written on
+   * a false premise. Inside the add-in the token always carries
+   * Files.ReadWrite.All, so here a 404 does mean the drive is not there.
    */
   async function ensureDrive(token) {
     var res = await fetchRetry(GRAPH + "/me/drive?$select=id", {

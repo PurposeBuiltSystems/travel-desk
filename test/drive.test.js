@@ -1,10 +1,15 @@
 /*
  * What the user is told when their OneDrive has never been opened.
  *
- * This is not hypothetical. A licensed Microsoft 365 account that has never
- * loaded OneDrive has no drive at all: GET /me/drive returns 404
- * itemNotFound and /me/drives returns an empty list. Confirmed against a
- * real account on 14 September 2026, which is what prompted this test.
+ * A licensed Microsoft 365 account that has never loaded OneDrive has no
+ * drive at all, and GET /me/drive returns 404 itemNotFound.
+ *
+ * Care is needed reading that 404 from outside the add-in: a token lacking
+ * any Files.* scope returns the same itemNotFound on a perfectly healthy
+ * drive. That is what happened while this was being written - an Azure CLI
+ * token with only directory scopes made a provisioned OneDrive look absent.
+ * Inside the add-in the token always carries Files.ReadWrite.All, so the
+ * 404 is unambiguous there.
  *
  * The failure mode being guarded against is a message that is technically
  * true and practically useless. uploadWorkbook already explained the 404

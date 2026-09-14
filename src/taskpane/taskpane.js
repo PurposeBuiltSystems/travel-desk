@@ -21,7 +21,7 @@
    *
    * Kept in step with the ?v= in taskpane.html by tools/check-build.js.
    */
-  var PANE_BUILD = "74";
+  var PANE_BUILD = "75";
 
   var SETTINGS_KEY = "traveldesk.settings";
   var wbRef = null; // {driveId, itemId, name} cached after connect
@@ -2032,17 +2032,55 @@
    * the one view that reads everybody's rows rather than the signed-in
    * user's own trips.
    */
-  async function coordLoad() {
+  /**
+   * Which workbook the coordinator view should read.
+   *
+   * This used to be `wbRef || (st.wbUrl ? null : null)` - a ternary whose
+   * branches are identical, so it always collapsed to the in-memory ref.
+   * That ref is only set by connecting a workbook in the current session, so
+   * after a reload the button fell through to resolving st.wbUrl; and for
+   * anyone set up with per-year planners, st.wbUrl is empty and st.wbRef was
+   * never consulted at all. The saved planner was sitting right there.
+   *
+   * Order: the planner saved for the year being viewed, then the catch-all,
+   * then whatever is connected now, then any planner at all - and a sentence
+   * saying what to do if there is genuinely nothing.
+   */
+  async function coordPlanner(token, fy) {
     var st = settings();
-    var ref = wbRef || (st.wbUrl ? null : null);
-    byId("coordLoad").disabled = true;
+    var picked = TravelForm.pickPlanner(st.planners, fy || "");
+    if (picked && picked.planner && picked.planner.wbRef) {
+      return { ref: picked.planner.wbRef, tableName: picked.planner.tableName };
+    }
+    var ref = wbRef || st.wbRef || null;
+    if (ref) { return { ref: ref, tableName: st.tableName }; }
+    if (st.wbUrl) {
+      setStatus("work", "Opening the planner\u2026");
+      return { ref: await GraphData.resolveWorkbook(token, st.wbUrl), tableName: st.tableName };
+    }
+    // Per-year planners exist but none matched the filter: read the first
+    // rather than telling a coordinator with a planner that they have none.
+    var keys = Object.keys(st.planners || {});
+    for (var i = 0; i < keys.length; i++) {
+      var pl = st.planners[keys[i]];
+      if (pl && pl.wbRef) { return { ref: pl.wbRef, tableName: pl.tableName }; }
+    }
+    return { ref: null, tableName: null };
+  }
+
+  async function coordLoad() {
+    var btn = byId("coordLoad");
+    if (btn) { btn.disabled = true; }
     try {
       var token = await GraphData.getToken();
+      var pl = await coordPlanner(token, val("coordFy").trim());
+      var ref = pl.ref;
       if (!ref) {
-        setStatus("work", "Opening the planner\u2026");
-        ref = await GraphData.resolveWorkbook(token, st.wbUrl);
+        setStatus("error", "No planner is connected yet \u2014 use \u201cFind my planner\u201d " +
+          "at the top of the pane, or connect one in Setup.");
+        return;
       }
-      var tableName = st.tableName || (await GraphData.listTables(token, ref))[0];
+      var tableName = pl.tableName || (await GraphData.listTables(token, ref))[0];
       if (!tableName) { throw new Error("no table on that workbook yet"); }
 
       setStatus("work", "Reading everyone's trips\u2026");
@@ -2066,7 +2104,7 @@
     } catch (e) {
       setStatus("error", "Couldn't load the planner: " + ((e && e.message) || e));
     } finally {
-      byId("coordLoad").disabled = false;
+      if (btn) { btn.disabled = false; }
     }
   }
 

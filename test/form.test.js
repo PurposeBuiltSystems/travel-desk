@@ -409,4 +409,29 @@ check("a trailing full stop is not part of the address",
 check("nothing to send to", F.extractEmails("no addresses here").length, 0);
 check("empty input", F.extractEmails("").length, 0);
 
+// --- the planner year has to be the label trips actually compute ----------
+//
+// Reported from real use: the planner list said "trips dated in 2027 go to
+// Division travel planner.xlsx" while submitting said "No planner saved for
+// 2727". The year box is free text, the lookup is an exact string match, and
+// with an FY prefix of "27" a trip in FY2027 computes "2727". Nothing
+// connected the two for the user.
+
+T.check("a typed full year does not match a computed label",
+  F.plannerKeyMismatch("2027", 7, "27"), "2727");
+T.check("the matching label passes",
+  F.plannerKeyMismatch("2727", 7, "27"), null);
+T.check("the default prefix passes",
+  F.plannerKeyMismatch("FY27", 7, ""), null);
+T.check("the catch-all is always fine",
+  F.plannerKeyMismatch("*", 7, "FY"), null);
+T.check("an empty key is fine",
+  F.plannerKeyMismatch("", 7, "FY"), null);
+T.check("a full year against the default prefix is caught",
+  F.plannerKeyMismatch("2027", 7, "FY"), "FY27");
+T.check("a custom org prefix is respected",
+  F.plannerKeyMismatch("SFY27", 7, "SFY"), null);
+T.check("and a wrong one against it is caught",
+  F.plannerKeyMismatch("FY27", 7, "SFY"), "SFY27");
+
 T.done("All Travel Desk form tests passed.");

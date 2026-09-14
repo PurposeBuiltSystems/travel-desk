@@ -21,7 +21,7 @@
    *
    * Kept in step with the ?v= in taskpane.html by tools/check-build.js.
    */
-  var PANE_BUILD = "70";
+  var PANE_BUILD = "71";
 
   var SETTINGS_KEY = "traveldesk.settings";
   var wbRef = null; // {driveId, itemId, name} cached after connect
@@ -698,9 +698,23 @@
     // confirmation that came after them. The save had happened; the button
     // just looked dead, which is the one thing it must never look.
     var where = (pl[key].wbRef && pl[key].wbRef.name) || pl[key].wbUrl || "the workbook";
-    setStatus("info", (key === "*" ? "Saved \u2014 " + where + " is now your catch-all planner."
-      : "Saved \u2014 trips dated in " + key + " go to " + where + ".") +
-      " It's listed below with a link to open it.");
+
+    // The year is free text and the lookup is an exact string match, so a
+    // typed "2027" never meets a computed "FY27" - and the mismatch stays
+    // invisible until a trip is submitted, where it surfaces as "no planner
+    // saved for FY27" while the planner sits right there in the list. Say it
+    // here, where it can still be fixed in one edit.
+    var wrong = TravelForm.plannerKeyMismatch(key, st.fyStartMonth, st.fyPrefix);
+    if (wrong) {
+      setStatus("info", "Saved \u2014 but trips will look for \u201c" + wrong +
+        "\u201d, not \u201c" + key + "\u201d, so this planner won't be found. " +
+        "Change the year to \u201c" + wrong + "\u201d, or clear the box to use " +
+        "this workbook for every year.");
+    } else {
+      setStatus("info", (key === "*" ? "Saved \u2014 " + where + " is now your catch-all planner."
+        : "Saved \u2014 trips dated in " + key + " go to " + where + ".") +
+        " It's listed below with a link to open it.");
+    }
 
     [renderPlannerList, checkPlannerColumns, renderCoordSteps, noteInvitesStale,
      function () { noteWhereThePlannerLives(pl[key].wbUrl); },

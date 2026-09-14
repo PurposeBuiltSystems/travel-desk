@@ -434,4 +434,24 @@ T.check("a custom org prefix is respected",
 T.check("and a wrong one against it is caught",
   F.plannerKeyMismatch("FY27", 7, "SFY"), "SFY27");
 
+// --- the fiscal year defaults to a July start ----------------------------
+//
+// A fiscal year is numbered by its ENDING year, so a trip in the second half
+// of the calendar year belongs to next year's books. That is the thing people
+// get wrong when typing the year by hand, and it is why the default matters.
+
+T.check("July-Dec rolls into next year's FY", F.fiscalLabel("2026-09-15"), "FY27");
+T.check("a July 1 trip is already next FY", F.fiscalLabel("2026-07-01"), "FY27");
+T.check("June 30 is still this FY", F.fiscalLabel("2026-06-30"), "FY26");
+T.check("January is the same FY as the June before it", F.fiscalLabel("2027-01-10"), "FY27");
+
+// An explicit choice still wins over the default.
+T.check("calendar-year orgs are unaffected", F.fiscalLabel("2026-09-15", 1), "FY26");
+T.check("the federal October start still works", F.fiscalLabel("2026-09-15", 10), "FY26");
+T.check("and October 1 federal rolls over", F.fiscalLabel("2026-10-01", 10), "FY27");
+
+// The default has to be the same one the planner-key check assumes.
+T.check("a July-start trip and the key check agree",
+  F.plannerKeyMismatch(F.fiscalLabel("2026-09-15"), 7, ""), null);
+
 T.done("All Travel Desk form tests passed.");

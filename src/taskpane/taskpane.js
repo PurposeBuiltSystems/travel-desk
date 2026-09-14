@@ -21,7 +21,7 @@
    *
    * Kept in step with the ?v= in taskpane.html by tools/check-build.js.
    */
-  var PANE_BUILD = "71";
+  var PANE_BUILD = "72";
 
   var SETTINGS_KEY = "traveldesk.settings";
   var wbRef = null; // {driveId, itemId, name} cached after connect
@@ -3171,7 +3171,7 @@
       var orgOpts = {
         orgName: s.orgName || "",
         fundingLabel: s.fundingLabel || "",
-        fyStartMonth: Number(s.fyStartMonth) || 1,
+        fyStartMonth: Number(s.fyStartMonth) || 7,
         fyPrefix: s.fyPrefix || "FY",
         costMode: val("costMode") || "per-person",
       };

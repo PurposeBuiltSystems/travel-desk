@@ -51,14 +51,20 @@
 
   /**
    * Fiscal-year label for a date, for any org's fiscal calendar.
-   * startMonth 1 = calendar year ("FY27" = 2027); otherwise the fiscal year
-   * is numbered by its ENDING year (start 7: Jul 2026–Jun 2027 = 27; start
-   * 10 = US federal). Prefix is the org's convention ("FY", "SFY", "FFY").
+   *
+   * Defaults to a July start, because that is what most states use and this
+   * add-in was built for one. A fiscal year is numbered by its ENDING year,
+   * so 1 Jul 2026 - 30 Jun 2027 is "FY27": a trip taken in the second half
+   * of the calendar year belongs to next year's books, which is the thing
+   * people get wrong when they type the year by hand.
+   *
+   * startMonth 1 means the org uses the calendar year; 10 is US federal.
+   * Prefix is the org's convention ("FY", "SFY", "FFY").
    */
   function fiscalLabel(isoDate, startMonth, prefix) {
     var d = new Date(String(isoDate || "") + "T00:00:00");
     if (isNaN(d)) { return ""; }
-    var start = Number(startMonth) || 1;
+    var start = Number(startMonth) || 7;
     var y = d.getFullYear(), m = d.getMonth() + 1;
     var fy = start === 1 ? y : (m >= start ? y + 1 : y);
     return (prefix == null || prefix === "" ? "FY" : prefix) + String(fy).slice(-2);

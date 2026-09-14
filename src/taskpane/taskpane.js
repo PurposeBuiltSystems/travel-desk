@@ -21,7 +21,13 @@
    *
    * Kept in step with the ?v= in taskpane.html by tools/check-build.js.
    */
-  var PANE_BUILD = "75";
+  // Reset to 1 for the first public release. The 70-odd builds before it
+  // were pre-submission development on an add-in nobody had installed, and a
+  // "build 75" badge on a version 1.0.0.0 product reads as a mistake. From
+  // here it only ever goes up: the staleness check compares this string to
+  // the one in the page's script tag, so what matters is that they differ
+  // when the content changes, not which is larger.
+  var PANE_BUILD = "1";
 
   var SETTINGS_KEY = "traveldesk.settings";
   var wbRef = null; // {driveId, itemId, name} cached after connect

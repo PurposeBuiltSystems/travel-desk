@@ -213,6 +213,31 @@
   }
 
   /**
+   * Is `key` a label that trips will actually compute to?
+   *
+   * The planner's year is typed into a free-text box. It is prefilled with
+   * the computed label, but anything can be typed over it - and the lookup
+   * is an exact string match, so "2027" against a computed "FY27" silently
+   * never matches. The user then sees "no planner saved for FY27" while
+   * looking at a planner they just saved, and nothing connects the two.
+   *
+   * Returns null when the key is fine (or is the catch-all), otherwise the
+   * label the add-in will actually look for, so the caller can say so.
+   */
+  function plannerKeyMismatch(key, startMonth, prefix) {
+    if (!key || key === "*") { return null; }
+    var pre = (prefix == null || prefix === "") ? "FY" : String(prefix);
+    var now = new Date().getFullYear();
+    for (var y = now - 2; y <= now + 5; y++) {
+      if (key === pre + String(y).slice(-2)) { return null; }
+    }
+    var digits = String(key).match(/(\d{4}|\d{2})\s*$/);
+    var meant = digits ? Number(digits[1]) : now;
+    if (meant < 100) { meant += 2000; }
+    return pre + String(meant).slice(-2);
+  }
+
+  /**
    * Match booking-confirmation emails (already filtered to booking senders,
    * e.g. Concur) to a trip. A candidate must arrive after the request and
    * before the trip ends; it's a CONFIDENT match when the subject/preview
@@ -716,6 +741,7 @@
 
   var api = {
     pickPlanner: pickPlanner,
+    plannerKeyMismatch: plannerKeyMismatch,
     STATUS: STATUS,
     isAuthorized: isAuthorized,
     variance: variance,

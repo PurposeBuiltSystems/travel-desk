@@ -27,7 +27,7 @@
   // here it only ever goes up: the staleness check compares this string to
   // the one in the page's script tag, so what matters is that they differ
   // when the content changes, not which is larger.
-  var PANE_BUILD = "1";
+  var PANE_BUILD = "2";
 
   var SETTINGS_KEY = "traveldesk.settings";
   var wbRef = null; // {driveId, itemId, name} cached after connect
@@ -636,8 +636,8 @@
       row.style.cssText = "padding:4px 0";
 
       var head = document.createElement("div");
-      head.innerHTML = "<b>" + (k === "*" ? "All years" : k) + "</b>: " + name +
-        " \u00b7 table " + (p.tableName || "?");
+      head.innerHTML = "<b>" + esc(k === "*" ? "All years" : k) + "</b>: " + esc(name) +
+        " \u00b7 table " + esc(p.tableName || "?");
       row.appendChild(head);
 
       // Naming the file was never enough - "I don't know where it went" is

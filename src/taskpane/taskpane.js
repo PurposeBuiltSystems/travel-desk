@@ -27,7 +27,7 @@
   // here it only ever goes up: the staleness check compares this string to
   // the one in the page's script tag, so what matters is that they differ
   // when the content changes, not which is larger.
-  var PANE_BUILD = "2";
+  var PANE_BUILD = "3";
 
   var SETTINGS_KEY = "traveldesk.settings";
   var wbRef = null; // {driveId, itemId, name} cached after connect

@@ -118,7 +118,7 @@
       if (k.indexOf("role") !== -1) { return model.attendeeRole || ""; }
       if (k.indexOf("cost") !== -1 || k.indexOf("estimate") !== -1) {
         var amt = opts.costOverride != null ? opts.costOverride : totals.grand;
-        return amt ? String(Math.round(amt)) : "";
+        return amt ? String(Math.round(amt * 100) / 100) : "";
       }
       // "% Reimbursed" must be tested BEFORE the third-party names below,
       // or the shared word "reimburs" steals the percentage column.
@@ -568,7 +568,7 @@
     if (opts.costMode === "split" && people.length > 1 && grand) {
       override = grand / people.length;
     }
-    return people.map(function (p) {
+    return people.map(function (p, index) {
       var m = {};
       Object.keys(model).forEach(function (k) { m[k] = model[k]; });
       m.name = p.name || model.name;
@@ -577,7 +577,11 @@
       m.attendeeRole = p.role || model.attendeeRole;
       var o = {};
       Object.keys(opts).forEach(function (k) { o[k] = opts[k]; });
-      if (override != null) { o.costOverride = override; }
+      if (override != null) {
+        var cents = Math.round(grand * 100);
+        var share = Math.floor(cents / people.length);
+        o.costOverride = (share + (index < cents - share * people.length ? 1 : 0)) / 100;
+      }
       return plannerRow(headers, m, o);
     });
   }

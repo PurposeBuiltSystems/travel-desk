@@ -280,8 +280,8 @@ check("per-person repeats the cost", perPerson[1][7], "1000");
 check("shared trip details repeat", perPerson[2][3], "TRB");
 
 var split = F.plannerRows(MH, group, { fyStartMonth: 7, fyPrefix: "SFY", costMode: "split" });
-check("split divides across travelers", split[0][7], "333");
-check("split applies to everyone", split[2][7], "333");
+check("split divides across travelers", split[0][7], "333.34");
+check("split applies to everyone", split[2][7], "333.33");
 
 var solo = F.plannerRows(MH, { name: "Solo", costs: { registration: "500" } }, {});
 check("no extra travelers -> one row", solo.length, 1);
@@ -525,4 +525,7 @@ T.check("identifiers survive ranking",
 T.check("an empty list is fine", F.rankPlannerCandidates([]).length, 0);
 T.check("so is nothing at all", F.rankPlannerCandidates().length, 0);
 
+T.check("planner estimate preserves cents", F.plannerRow(["Estimated cost"], {costs:{registration:123.45}})[0], "123.45");
+T.check("planner cost override preserves cents", F.plannerRow(["Estimated cost"], {}, {costOverride:123.45})[0], "123.45");
+T.check("split planner cents add to the full trip total", split.reduce(function(sum,row){return sum + Math.round(Number(row[7])*100);},0), 100000);
 T.done("All Travel Desk form tests passed.");

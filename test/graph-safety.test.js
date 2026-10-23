@@ -32,6 +32,11 @@ function load(fetcher) {
   return { api: context.self.GraphData, transport: context.self.transport, calls, waits };
 }
 (async () => {
+  const uncertainPost = load(() => response(503, {}, "0"));
+  assert.equal((await uncertainPost.transport.fetchRetry("url", { method: "POST" })).status, 503);
+  assert.equal(uncertainPost.calls.length, 1, "never retry a possibly committed POST on 503");
+  const deniedPost = load(() => response(403));
+  await assert.rejects(deniedPost.transport.graphJson("token", "POST", "/me/messages", {}), error => error.status === 403);
   // Exercise retry behavior with fake timers, including date/invalid headers.
   for (const status of [429, 503]) {
     for (const header of ["2", null, "invalid", "0", "60", new Date(Date.now() + 60000).toUTCString()]) {

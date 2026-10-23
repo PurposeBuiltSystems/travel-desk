@@ -73,6 +73,9 @@
    */
   async function fetchRetry(url, opts) {
     var res = await fetch(url, opts);
+    // A POST may have committed before a 503 response. A blind retry can
+    // create a duplicate draft or planner row; let the pane resolve it.
+    if (res.status === 503 && opts && opts.method === "POST") { return res; }
     if (res.status === 429 || res.status === 503) {
       var retryAfter = res.headers.get("Retry-After");
       var wait = retryAfter && /^\d+(\.\d+)?$/.test(retryAfter.trim())
@@ -188,7 +191,11 @@
       headers: headers,
       body: body ? JSON.stringify(body) : undefined,
     });
-    if (!res.ok) { throw new Error("Graph " + method + " " + path.split("?")[0] + " -> " + res.status + " " + (await res.text())); }
+    if (!res.ok) {
+      var error = new Error("Graph " + method + " " + path.split("?")[0] + " -> " + res.status + " " + (await res.text()));
+      error.status = res.status;
+      throw error;
+    }
     return res.status === 204 ? null : res.json();
   }
 

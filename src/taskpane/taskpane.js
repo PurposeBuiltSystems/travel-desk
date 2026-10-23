@@ -27,10 +27,49 @@
   // here it only ever goes up: the staleness check compares this string to
   // the one in the page's script tag, so what matters is that they differ
   // when the content changes, not which is larger.
-  var PANE_BUILD = "3";
+  var PANE_BUILD = "4";
 
   var SETTINGS_KEY = "traveldesk.settings";
   var wbRef = null; // {driveId, itemId, name} cached after connect
+  var submitBusy = false;
+  var submissionReceipts = Object.create(null); // confirmed writes during this pane session
+
+  // A lost response does not prove that a write failed. Ask the traveler to
+  // check the destination before retrying an operation whose outcome is unknown.
+  function definiteWriteFailure(error) {
+    return error && error.status >= 400 && error.status < 500 && error.status !== 408;
+  }
+
+  function showSubmissionRecovery(receipt) {
+    var box = byId("submissionRecovery");
+    if (!box) { return; }
+    box.innerHTML = "";
+    box.hidden = !receipt || !receipt.pending;
+    if (box.hidden) { return; }
+    var pending = receipt.pending;
+    var label = pending.kind === "draft" ? "the Travel Authorization draft" : "planner row " + (pending.progress.done + 1);
+    var p = document.createElement("p");
+    p.textContent = "We couldn't confirm whether " + label + " for " + receipt.label + " was saved. Check " +
+      (pending.kind === "draft" ? "Drafts" : "the planner workbook") +
+      " for this request before continuing. Confirmed earlier steps will not be repeated while this pane stays open.";
+    box.appendChild(p);
+    [true, false].forEach(function (exists) {
+      var button = document.createElement("button");
+      button.textContent = exists ? "I found it — continue" : "It is missing — retry";
+      button.type = "button";
+      button.addEventListener("click", function () {
+        if (submitBusy || receipt.pending !== pending) { return; }
+        if (exists) {
+          if (pending.kind === "draft") { receipt.drafts[pending.key] = true; }
+          else { pending.progress.done++; }
+        }
+        receipt.pending = null;
+        box.hidden = true;
+        submit();
+      });
+      box.appendChild(button);
+    });
+  }
 
   function byId(id) { return document.getElementById(id); }
 
@@ -3367,6 +3406,7 @@
   }
 
   async function submit() {
+    if (submitBusy) { return; }
     var m = model();
     var doDraft = isChecked("doDraft");
     var doRow = isChecked("doRow");
@@ -3383,6 +3423,7 @@
     // whatever cannot is named.
     var plannerBlocked = doRow && !(s.wbRef || wbRef);
 
+    submitBusy = true;
     setProp("submit", "disabled", true);
     var done = [];
     var failed = [];
@@ -3396,14 +3437,28 @@
         fyPrefix: s.fyPrefix || "FY",
         costMode: val("costMode") || "per-person",
       };
+      var account = await GraphData.currentAccount();
+      var receiptKey = JSON.stringify({ account: account, form: m, options: orgOpts });
+      var draftKey = val("coordEmail").trim();
+      var receipt = submissionReceipts[receiptKey];
+      if (!receipt) { receipt = submissionReceipts[receiptKey] = { label: m.name + " — " + m.event, drafts: Object.create(null), rows: Object.create(null), recorded: false, pending: null }; }
+      showSubmissionRecovery(receipt);
+      if (receipt.pending) {
+        setStatus("info", "Check the uncertain saved step below before submitting this request again.");
+        return;
+      }
 
-      if (doDraft) {
+      if (doDraft && receipt.drafts[draftKey]) { done.push("draft already created — check Drafts; no duplicate created"); }
+      else if (doDraft) {
         try {
           setStatus("work", "Creating the Travel Authorization draft…");
+          receipt.pending = { kind: "draft", key: draftKey };
           var draft = await GraphData.createDraft(token, val("coordEmail").trim(),
             TravelForm.subjectLine(m), TravelForm.formHtml(m, orgOpts),
             logoAttachment());
-          done.push("draft OPENED for you — review it and press Send");
+          receipt.drafts[draftKey] = true;
+          receipt.pending = null;
+          done.push("draft created — review it in Drafts and press Send");
           // "Draft created" is not "request sent". Open it, because this is
           // the moment the traveler has to press Send.
           try {
@@ -3416,6 +3471,7 @@
             }
           } catch (openErr) { done.push("(it's in your Drafts folder)"); }
         } catch (draftErr) {
+          if (definiteWriteFailure(draftErr)) { receipt.pending = null; }
           failed.push("the email draft (" + ((draftErr && draftErr.message) || draftErr) + ")");
         }
       }
@@ -3424,7 +3480,7 @@
         openPlannerSetup();
         failed.push("the planner row — no planner is connected. I've opened Setup below: use " +
           "“Create my planner”, or “Show my files” to connect an existing workbook");
-      } else if (doRow) {
+      } else if (doRow && !receipt.pending) {
         try {
           setStatus("work", "Adding the planner row…");
           var tripFy = TravelForm.fiscalLabel(m.eventStart || m.departDate, s.fyStartMonth, s.fyPrefix);
@@ -3445,35 +3501,53 @@
           // One row per traveler: the planner's convention is one line per
           // person per event, and anything less undercounts a delegation.
           var rows = TravelForm.plannerRows(headers, m, orgOpts);
-          for (var ri = 0; ri < rows.length; ri++) {
+          // Header order can change between attempts; it must not make saved
+          // travelers look like new rows when the same request is retried.
+          var rowKey = JSON.stringify({ drive: ref.driveId, item: ref.itemId, table: tableName });
+          var progress = receipt.rows[rowKey] || (receipt.rows[rowKey] = { done: 0 });
+          for (var ri = progress.done; ri < rows.length; ri++) {
             if (rows.length > 1) { setStatus("work", "Adding planner row " + (ri + 1) + " of " + rows.length + "…"); }
+            receipt.pending = { kind: "row", progress: progress };
             await GraphData.addTableRow(token, ref, tableName, rows[ri]);
+            progress.done++;
+            receipt.pending = null;
           }
           done.push(rows.length + (rows.length === 1 ? " row" : " rows (one per traveler)") +
             " added to " + (picked && picked.key !== "*" ? picked.key + " planner (" : "") +
             (ref.name || "the planner") + (picked && picked.key !== "*" ? ")" : ""));
         } catch (rowErr) {
+          if (definiteWriteFailure(rowErr)) { receipt.pending = null; }
+          if (progress && progress.done) { done.push(progress.done + " planner row(s) already saved; confirmed rows will be skipped on retry"); }
           failed.push("the planner row (" + ((rowErr && rowErr.message) || rowErr) + ")");
         }
+      } else if (doRow) {
+        failed.push("the planner row — check the uncertain draft save first");
       }
 
       saveSettings({ name: m.name, costCenter: m.costCenter, division: m.division, bureau: m.bureau });
       // Record the trip if ANY part succeeded. This previously ran only on a
       // completely clean pass, so a created draft could leave no trace in
       // My trips - the traveler had a request the add-in had no memory of.
-      if (done.length) { addTrip(m); }
+      if ((done.length || Object.keys(receipt.rows).some(function (k) { return receipt.rows[k].done > 0; })) && !receipt.recorded) {
+        addTrip(m); receipt.recorded = true;
+      }
 
-      if (done.length && !failed.length) {
+      if (receipt.pending) {
+        setStatus("info", "Save outcome uncertain. Check the saved step below before retrying." +
+          (done.length ? " Confirmed: " + done.join(" + ") + "." : ""));
+      } else if (done.length && !failed.length) {
         setStatus("ok", "Done: " + done.join(" + ") + ".");
       } else if (done.length) {
         setStatus("info", "Done: " + done.join(" + ") + ". NOT done: " + failed.join("; ") + ".");
       } else {
         setStatus("error", "Nothing was created. Couldn't do " + failed.join("; ") + ".");
       }
+      showSubmissionRecovery(receipt);
     } catch (e) {
       setStatus("error", "Travel request failed: " + ((e && e.message) || e) +
         (done.length ? " — but this did happen: " + done.join(" + ") + "." : ""));
     } finally {
+      submitBusy = false;
       setProp("submit", "disabled", false);
     }
   }
